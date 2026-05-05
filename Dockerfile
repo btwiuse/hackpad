@@ -1,4 +1,4 @@
-FROM golang:1.20 as go-builder
+FROM golang:1.26 as go-builder
 WORKDIR /src
 # Cache go installation first
 COPY Makefile /src

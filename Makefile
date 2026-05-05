@@ -1,5 +1,5 @@
 SHELL := /usr/bin/env bash
-GO_VERSION = 1.20
+GO_VERSION = 1.26
 GOROOT =
 PATH := ${PWD}/cache/go/bin:${PWD}/cache/go/misc/wasm:${PATH}
 GOOS = js
@@ -72,7 +72,7 @@ cache/go${GO_VERSION}: cache
 			--depth 1 \
 			--single-branch \
 			--branch hackpad/release-branch.go${GO_VERSION} \
-			https://github.com/hack-pad/go.git \
+			https://github.com/btwiuse/go \
 			"$$TMP"; \
 		pushd "$$TMP/src"; \
 		./make.bash; \
@@ -97,7 +97,7 @@ server/public/wasm/main.wasm: server/public/wasm go
 	go build -o server/public/wasm/main.wasm .
 
 server/public/wasm/wasm_exec.js: go
-	cp cache/go/misc/wasm/wasm_exec.js server/public/wasm/wasm_exec.js
+	cp cache/go/lib/wasm/wasm_exec.js server/public/wasm/wasm_exec.js
 
 .PHONY: node-static
 node-static:
