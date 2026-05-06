@@ -117,3 +117,10 @@ func PanicLogger() {
 	defaultHandlePanic(1, r)
 	panic(r)
 }
+
+// HandlePanic logs the recovered panic value without re-panicking.
+// Use this instead of PanicLogger in contexts where re-panicking would cause
+// cascading failures (e.g. inside a js.FuncOf callback that wraps another WASM module).
+func HandlePanic(r interface{}) {
+	defaultHandlePanic(1, r)
+}

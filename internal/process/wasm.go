@@ -10,12 +10,15 @@ import (
 
 	"github.com/hack-pad/hackpad/internal/interop"
 	"github.com/hack-pad/hackpad/internal/log"
-	"github.com/hack-pad/hackpad/internal/promise"
 )
 
 var (
 	jsObject = js.Global().Get("Object")
 )
+
+// exitCodeCrash is the sentinel exit code written to exitChan when a child
+// WASM process crashes without invoking the exit callback.
+const exitCodeCrash = -1
 
 func (p *process) newWasmInstance(path string, importObject js.Value) (js.Value, error) {
 	return p.Files().WasmInstance(path, importObject)
@@ -27,17 +30,18 @@ func (p *process) run(path string) {
 	}()
 
 	exitChan := make(chan int, 1)
-	runPromise, err := p.startWasmPromise(path, exitChan)
+	err := p.startWasmProcess(path, exitChan)
 	if err != nil {
 		p.handleErr(err)
 		return
 	}
-	_, err = runPromise.Await()
 	p.exitCode = <-exitChan
-	p.handleErr(err)
+	// handleErr must be called even when there is no error, because it invokes
+	// p.Done() which cancels the process context and unblocks any callers of p.Wait().
+	p.handleErr(nil)
 }
 
-func (p *process) startWasmPromise(path string, exitChan chan<- int) (promise.Promise, error) {
+func (p *process) startWasmProcess(path string, exitChan chan<- int) error {
 	p.state = stateCompiling
 	goInstance := jsGo.New()
 	goInstance.Set("argv", interop.SliceFromStrings(p.args))
@@ -56,7 +60,7 @@ func (p *process) startWasmPromise(path string, exitChan chan<- int) (promise.Pr
 			goInstance.Set("importObject", js.Null())
 		}()
 		if len(args) == 0 {
-			exitChan <- -1
+			exitChan <- exitCodeCrash
 			return nil
 		}
 		code := args[0].Int()
@@ -70,13 +74,31 @@ func (p *process) startWasmPromise(path string, exitChan chan<- int) (promise.Pr
 
 	instance, err := p.newWasmInstance(path, importObject)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	exports := instance.Get("exports")
 
+	// signalCrash writes a crash sentinel to exitChan so that run() is not
+	// blocked indefinitely when the child WASM crashes without calling exit.
+	signalCrash := func() {
+		select {
+		case exitChan <- exitCodeCrash:
+		default:
+		}
+	}
+
 	resumeFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		defer interop.PanicLogger()
+		defer func() {
+			if r := recover(); r != nil {
+				// Log the panic but do NOT re-panic. Re-panicking here causes
+				// Go's handleEvent to recover and return normally to wasm_exec.js,
+				// which then never settles the run() promise. That in turn makes
+				// run() block forever on runPromise.Await(), leading to a deadlock.
+				interop.HandlePanic(r)
+				signalCrash()
+			}
+		}()
 		prev := switchContext(p.pid)
 		ret := exports.Call("resume", interop.SliceFromJSValues(args)...)
 		switchContext(prev)
@@ -85,7 +107,12 @@ func (p *process) startWasmPromise(path string, exitChan chan<- int) (promise.Pr
 	resumeFuncPtr = &resumeFunc
 	wrapperExports := map[string]interface{}{
 		"run": interop.SingleUseFunc(func(this js.Value, args []js.Value) interface{} {
-			defer interop.PanicLogger()
+			defer func() {
+				if r := recover(); r != nil {
+					interop.HandlePanic(r)
+					signalCrash()
+				}
+			}()
 			prev := switchContext(p.pid)
 			ret := exports.Call("run", interop.SliceFromJSValues(args)...)
 			switchContext(prev)
@@ -108,5 +135,6 @@ func (p *process) startWasmPromise(path string, exitChan chan<- int) (promise.Pr
 	)
 
 	p.state = stateRunning
-	return promise.From(goInstance.Call("run", wrapperInstance)), nil
+	goInstance.Call("run", wrapperInstance)
+	return nil
 }
