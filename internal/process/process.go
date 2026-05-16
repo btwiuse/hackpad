@@ -7,12 +7,13 @@ import (
 	"sort"
 	"strings"
 
+	"sync/atomic"
+
 	"github.com/hack-pad/hackpad/internal/common"
 	"github.com/hack-pad/hackpad/internal/fs"
 	"github.com/hack-pad/hackpad/internal/log"
 	"github.com/hack-pad/hackpadfs/keyvalue/blob"
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
 )
 
 const (
@@ -33,8 +34,12 @@ const (
 
 var (
 	pids    = make(map[PID]*process)
-	lastPID = atomic.NewUint64(minPID)
+	lastPID atomic.Uint64
 )
+
+func init() {
+	lastPID.Store(minPID)
+}
 
 type Process interface {
 	PID() PID
@@ -62,7 +67,7 @@ type process struct {
 }
 
 func New(command string, args []string, attr *ProcAttr) (Process, error) {
-	return newWithCurrent(Current(), PID(lastPID.Inc()), command, args, attr)
+	return newWithCurrent(Current(), PID(lastPID.Add(1)), command, args, attr)
 }
 
 func newWithCurrent(current Process, newPID PID, command string, args []string, attr *ProcAttr) (*process, error) {

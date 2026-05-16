@@ -10,11 +10,12 @@ import (
 	"strings"
 	"syscall/js"
 
+	"sync/atomic"
+
 	"github.com/avct/uasurfer"
 	"github.com/hack-pad/hackpad/cmd/editor/css"
 	"github.com/hack-pad/hackpad/cmd/editor/dom"
 	"github.com/hack-pad/hackpad/internal/log"
-	"go.uber.org/atomic"
 )
 
 var (

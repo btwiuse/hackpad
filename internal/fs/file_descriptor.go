@@ -7,14 +7,17 @@ import (
 	"strings"
 	"sync"
 
+	"sync/atomic"
+
 	"github.com/hack-pad/hackpad/internal/common"
 	"github.com/hack-pad/hackpad/internal/log"
 	"github.com/hack-pad/hackpadfs"
-	"go.uber.org/atomic"
 )
 
 type FID = common.FID
 
+// uint64Dec is added to a uint64 to decrement it by 1 (two's complement wrapping subtraction).
+const uint64Dec = ^uint64(0)
 type fileDescriptor struct {
 	id FID
 	*fileCore
@@ -64,14 +67,16 @@ func (fd *fileDescriptor) String() string {
 func (fd *fileDescriptor) Open(pid common.PID) {
 	count, ok := fd.openCounts[pid]
 	if ok {
-		count.Inc()
+		count.Add(1)
 		return
 	}
 	fd.fileCore.openMu.Lock()
 	if count, ok := fd.openCounts[pid]; ok {
-		count.Inc()
+		count.Add(1)
 	} else {
-		fd.openCounts[pid] = atomic.NewUint64(1)
+		u := new(atomic.Uint64)
+		u.Store(1)
+		fd.openCounts[pid] = u
 	}
 	fd.fileCore.openMu.Unlock()
 }
@@ -84,7 +89,7 @@ func (fd *fileDescriptor) Close(pid common.PID, locker sync.Locker, cleanUpFile 
 		return nil
 	}
 
-	if count.Dec() > 0 {
+	if count.Add(uint64Dec) > 0 {
 		return nil
 	}
 	// if this process's open count is 0, then use 'locker' and 'cleanUpFile' to remove it from the parent
@@ -136,7 +141,7 @@ func (fd *fileDescriptor) closeAll(pid common.PID) error {
 	}
 	var firstErr error
 	for count.Load() > 0 {
-		count.Dec()
+		count.Add(uint64Dec)
 		_, err := fd.unsafeClose(pid)
 		if firstErr == nil && err != nil {
 			log.Errorf("Failed to close file for PID %d %q: %s", pid, fd.FileName(), err.Error())

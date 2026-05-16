@@ -1,15 +1,15 @@
 package fs
 
 import (
+	"sync/atomic"
 	"time"
 
 	"github.com/hack-pad/hackpad/internal/log"
 	"github.com/hack-pad/hackpadfs"
-	"go.uber.org/atomic"
 )
 
 type workingDirectory struct {
-	path     atomic.String
+	path     atomic.Value // stores string
 	updating atomic.Bool
 }
 
@@ -42,5 +42,5 @@ func (w *workingDirectory) Get() (string, error) {
 	for i := 0; i < 10 && w.updating.Load(); i++ {
 		time.Sleep(10 * time.Millisecond)
 	}
-	return w.path.Load(), nil
+	return w.path.Load().(string), nil
 }
