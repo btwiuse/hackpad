@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<!--
+  browser_runner.html — 在浏览器中运行 hackpad examples
+
+  使用方式：
+    1. 将此文件和 wasm_exec.js 放在同一目录（examples/）
+    2. 编译示例：
+         GOOS=js GOARCH=wasm go build -o examples/01_fs_readwrite.wasm examples/01_fs_readwrite/main.go
+    3. 启动静态服务器：
+         cd examples && python3 -m http.server 8080
+    4. 浏览器访问 http://localhost:8080/browser_runner.html
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>Hackpad Examples Runner</title>
+  <style>
+    body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+    h1 { color: #569cd6; }
+    .example { margin: 10px 0; padding: 10px; border: 1px solid #444; border-radius: 4px; }
+    .example h3 { margin: 0 0 8px 0; color: #9cdcfe; }
+    .output { white-space: pre; font-size: 13px; line-height: 1.4; min-height: 24px; }
+    .pass { color: #4ec9b0; }
+    .fail { color: #f44747; }
+    .running { color: #dcdcaa; }
+    .pending { color: #888; }
+    button { background: #0e639c; color: white; border: none; padding: 8px 16px;
+             margin: 4px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    button:hover { background: #1177bb; }
+    #run-all { background: #16825d; font-size: 16px; padding: 10px 24px; }
+    #run-all:hover { background: #1d9e72; }
+    #summary { margin-top: 16px; font-size: 16px; padding: 10px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>🔬 Hackpad Examples Runner</h1>
+  <p>验证 <code>./internal</code> 模块配合 <code>./patches</code> 补丁的预期效果。</p>
+
+  <button id="run-all" onclick="runAll()">▶ Run All Examples</button>
+  <div id="summary"></div>
+
+  <div id="examples-container"></div>
+
+  <!-- 加载打了补丁的 wasm_exec.js -->
+  <script src="wasm_exec.js"></script>
+
+  <script>
+    const EXAMPLES = [
+      {
+        id: '01_fs_readwrite',
+        title: '01: 基础文件系统读写',
+        desc: '验证 os.MkdirAll / WriteFile / ReadFile / Stat / Rename / Remove',
+        wasm: '01_fs_readwrite.wasm',
+      },
+      {
+        id: '02_pipe',
+        title: '02: 管道 (Pipe) 通信',
+        desc: '验证 os.Pipe() 可用、管道数据传输、EOF 语义',
+        wasm: '02_pipe.wasm',
+      },
+      {
+        id: '03_process_context',
+        title: '03: 进程上下文与工作目录',
+        desc: '验证 os.Getwd / Chdir / Getpid / Environ',
+        wasm: '03_process_context.wasm',
+      },
+      {
+        id: '04_large_argv',
+        title: '04: 大 argv 支持 (patch 0003)',
+        desc: '验证 wasmMinDataAddr=128K，超过原 12KB 的 argv 能正常传递',
+        wasm: '04_large_argv.wasm',
+        args: buildLargeArgs(),
+      },
+      {
+        id: '05_flock',
+        title: '05: 文件锁 (flock)',
+        desc: '验证 syscall.Flock LOCK_EX/LOCK_UN，并发 goroutine 的互斥写入',
+        wasm: '05_flock.wasm',
+      },
+      {
+        id: '06_lookpath',
+        title: '06: LookPath 可执行文件查找 (patch 0001)',
+        desc: '验证 exec.LookPath 走 lp_unix.go 而非 lp_wasm.go 的 ErrNotFound stub',
+        wasm: '06_lookpath.wasm',
+      },
+    ];
+
+    function buildLargeArgs() {
+      const args = [];
+      for (let i = 0; i < 800; i++) {
+        args.push(`--check-arg=${i}`);
+      }
+      return args;
+    }
+
+    // 渲染 UI
+    function renderExamples() {
+      const container = document.getElementById('examples-container');
+      EXAMPLES.forEach(ex => {
+        const div = document.createElement('div');
+        div.className = 'example';
+        div.id = `ex-${ex.id}`;
+        div.innerHTML = `
+          <h3>${ex.title}</h3>
+          <p style="margin:0 0 6px 0; color:#888; font-size:12px;">${ex.desc}</p>
+          <button onclick="runExample('${ex.id}')">▶ Run</button>
+          <div class="output pending" id="out-${ex.id}">Waiting...</div>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    async function runExample(id) {
+      const ex = EXAMPLES.find(e => e.id === id);
+      const outEl = document.getElementById(`out-${id}`);
+      outEl.className = 'output running';
+      outEl.textContent = 'Running...';
+
+      let output = '';
+      const origLog = console.log;
+      const origError = console.error;
+      console.log = (...args) => { output += args.join(' ') + '\n'; origLog(...args); };
+      console.error = (...args) => { output += args.join(' ') + '\n'; origError(...args); };
+
+      try {
+        const resp = await fetch(ex.wasm);
+        if (!resp.ok) {
+          throw new Error(`Failed to fetch ${ex.wasm}: ${resp.status} ${resp.statusText}\n(Did you compile the wasm file?)`);
+        }
+        const wasmBuffer = await resp.arrayBuffer();
+
+        const go = new Go();
+        go.argv = [ex.wasm, ...(ex.args || [])];
+
+        const result = await WebAssembly.instantiate(wasmBuffer, go.importObject);
+        await go.run(result.instance);
+
+        console.log = origLog;
+        console.error = origError;
+
+        const passed = output.includes('PASS');
+        outEl.className = 'output ' + (passed ? 'pass' : 'fail');
+        outEl.textContent = output || (passed ? 'PASS' : 'FAIL (no output)');
+        return passed;
+      } catch (e) {
+        console.log = origLog;
+        console.error = origError;
+        outEl.className = 'output fail';
+        outEl.textContent = `ERROR: ${e.message}\n${output}`;
+        return false;
+      }
+    }
+
+    async function runAll() {
+      const summary = document.getElementById('summary');
+      summary.textContent = '';
+      let pass = 0, fail = 0;
+
+      for (const ex of EXAMPLES) {
+        const ok = await runExample(ex.id);
+        if (ok) pass++; else fail++;
+      }
+
+      summary.style.background = fail > 0 ? '#3a1a1a' : '#1a2e1a';
+      summary.style.color = fail > 0 ? '#f44747' : '#4ec9b0';
+      summary.textContent = `Results: ${pass} passed, ${fail} failed`;
+    }
+
+    renderExamples();
+  </script>
+</body>
+</html>
