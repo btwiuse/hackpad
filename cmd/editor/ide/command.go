@@ -44,7 +44,7 @@ func (w *window) runRawProcess(console TaskConsole, fullPath, name string, args 
 }
 
 func (w *window) startProcess(console TaskConsole, rawPath, name string, args ...string) (success bool, elapsed time.Duration) {
-	if !w.showLoading.CAS(false, true) {
+	if !w.showLoading.CompareAndSwap(false, true) {
 		return false, 0
 	}
 	startTime := time.Now()
