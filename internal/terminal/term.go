@@ -10,6 +10,7 @@ import (
 	"github.com/hack-pad/hackpad/internal/interop"
 	"github.com/hack-pad/hackpad/internal/log"
 	"github.com/hack-pad/hackpad/internal/process"
+	hackpadTerm "github.com/hack-pad/hackpad/internal/term"
 	"github.com/hack-pad/hackpadfs/indexeddb/idbblob"
 	"github.com/pkg/errors"
 )
@@ -33,7 +34,7 @@ func Open(args []js.Value) error {
 	if len(args) != 2 {
 		return errors.New("Invalid number of args for spawnTerminal. Expected 2: term, options")
 	}
-	term := args[0]
+	termJS := args[0]
 	options := args[1]
 	if options.Type() != js.TypeObject {
 		return errors.Errorf("Invalid type for options: %s", options.Type())
@@ -72,6 +73,24 @@ func Open(args []js.Value) error {
 		return err
 	}
 
+	// Register terminal dimensions for ioctl support
+	rows := uint16(termJS.Get("rows").Int())
+	cols := uint16(termJS.Get("cols").Int())
+	info := &hackpadTerm.TerminalInfo{Rows: rows, Cols: cols, Baud: 38400}
+	hackpadTerm.RegisterTerminal(stdinR, info)
+	hackpadTerm.RegisterTerminal(stdoutW, info)
+	hackpadTerm.RegisterTerminal(stderrW, info)
+
+	// Handle terminal resize events to update dimensions
+	resizeCallback := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		newRows := uint16(termJS.Get("rows").Int())
+		newCols := uint16(termJS.Get("cols").Int())
+		info.Rows = newRows
+		info.Cols = newCols
+		return nil
+	})
+	termJS.Call("onResize", resizeCallback)
+
 	f := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		chunk, err := idbblob.New(args[0])
 		if err != nil {
@@ -87,10 +106,14 @@ func Open(args []js.Value) error {
 	go func() {
 		_, _ = proc.Wait()
 		f.Release()
+		resizeCallback.Release()
+		hackpadTerm.UnregisterTerminal(stdinR)
+		hackpadTerm.UnregisterTerminal(stdoutW)
+		hackpadTerm.UnregisterTerminal(stderrW)
 	}()
-	term.Call("onData", f)
-	go readOutputPipes(term, files, stdoutR)
-	go readOutputPipes(term, files, stderrR)
+	termJS.Call("onData", f)
+	go readOutputPipes(termJS, files, stdoutR)
+	go readOutputPipes(termJS, files, stderrR)
 	return nil
 }
 

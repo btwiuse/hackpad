@@ -13,12 +13,14 @@ import (
 	"github.com/hack-pad/hackpad/internal/js/process"
 	"github.com/hack-pad/hackpad/internal/log"
 	libProcess "github.com/hack-pad/hackpad/internal/process"
+	"github.com/hack-pad/hackpad/internal/term"
 	"github.com/hack-pad/hackpad/internal/terminal"
 )
 
 func main() {
 	process.Init()
 	fs.Init()
+	global.Set("ioctl", js.FuncOf(term.Ioctl))
 	global.Set("spawnTerminal", js.FuncOf(terminal.SpawnTerminal))
 	global.Set("dump", js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		go func() {

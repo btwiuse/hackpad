@@ -1,0 +1,147 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Message-ID: <0000000000000000000000000000000000000000.1778922107.git.navigaid@gmail.com>
+In-Reply-To: <c63594911bd3d543ac755a00886c20f3395ce03a.1778922107.git.navigaid@gmail.com>
+References: <c63594911bd3d543ac755a00886c20f3395ce03a.1778922107.git.navigaid@gmail.com>
+From: Hackpad <hackpad@hackpad.org>
+Date: Thu, 17 May 2026 00:00:00 +0000
+Subject: [PATCH 5/5] hackpad: add terminal ioctl support (IsTerminal, GetSize)
+
+Adds SYS_IOCTL support to the js/wasm runtime, enabling
+golang.org/x/term.IsTerminal() and term.GetSize() to work
+when connected to hackpad's xterm.js terminal instances.
+
+The ioctl handler delegates to JavaScript via hackpad.ioctl(fd, req),
+which returns terminal dimensions for TIOCGWINSZ and a success
+indicator for TIOCGETA/TCGETS (isatty).
+
+Includes Winsize, Termios structs and TIOCGETA/TIOCGWINSZ constants
+matching Darwin's values since the macOS target is used for development.
+---
+ src/syscall/syscall_js.go          | 20 ++++++++++++++------
+ src/syscall/syscall_js_hackpad.go  | 56 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 70 insertions(+), 6 deletions(-)
+
+diff --git a/src/syscall/syscall_js.go b/src/syscall/syscall_js.go
+index cedaf25559..a1b2c3d4e5f6 100644
+--- a/src/syscall/syscall_js.go
++++ b/src/syscall/syscall_js.go
+@@ -16,6 +16,11 @@ import (
+ 	"unsafe"
+ )
+ 
++const (
++	// SYS_IOCTL uses Darwin's syscall number; any value works since js/wasm dispatches internally
++	SYS_IOCTL = 54
++)
++
+ const direntSize = 8 + 8 + 2 + 256
+ 
+ type Dirent struct {
+@@ -262,17 +267,20 @@ type ProcAttr struct {
+ type SysProcAttr struct {
+ }
+ 
+-func Syscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno) {
++func Syscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, errno Errno) {
++	if trap == SYS_IOCTL {
++		return 0, 0, Errno(ioctl(int(a1), uint(a2), a3))
++	}
+ 	return 0, 0, ENOSYS
+ }
+ 
+-func Syscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err Errno) {
++func Syscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, errno Errno) {
++	if trap == SYS_IOCTL {
++		return 0, 0, Errno(ioctl(int(a1), uint(a2), a3))
++	}
+ 	return 0, 0, ENOSYS
+ }
+ 
+-func RawSyscall(trap, a1, a2, a3 uintptr) (r1, r2 uintptr, err Errno) {
+-	return 0, 0, ENOSYS
+-}
+-
+ func RawSyscall6(trap, a1, a2, a3, a4, a5, a6 uintptr) (r1, r2 uintptr, err Errno) {
+ 	return 0, 0, ENOSYS
+ }
+diff --git a/src/syscall/syscall_js_hackpad.go b/src/syscall/syscall_js_hackpad.go
+index e011a35b4d..f2e3d4c5b6a7 100644
+--- a/src/syscall/syscall_js_hackpad.go
++++ b/src/syscall/syscall_js_hackpad.go
+@@ -5,6 +5,7 @@ package syscall
+ 
+ import (
+ 	"syscall/js"
++	"unsafe"
+ )
+ 
+ const (
+@@ -13,6 +14,32 @@ const (
+ 	LOCK_UN = 0x8
+ )
+ 
++// Terminal ioctl constants (matching Darwin/macOS values)
++const (
++	TIOCGETA   = 0x40487413
++	TIOCGWINSZ = 0x40087468
++)
++
++// Winsize represents the terminal window size.
++type Winsize struct {
++	Row    uint16
++	Col    uint16
++	Xpixel uint16
++	Ypixel uint16
++}
++
++// Termios represents terminal attributes (minimal, sufficient for IsTerminal).
++type Termios struct {
++	Iflag  uint64
++	Oflag  uint64
++	Cflag  uint64
++	Lflag  uint64
++	Cc     [20]uint8
++	Ispeed uint64
++	Ospeed uint64
++}
++
++var jsHackpad = js.Global().Get("hackpad")
+ var jsChildProcess = js.Global().Get("child_process")
+ 
+ func Flock(fd, how int) error {
+@@ -20,6 +47,35 @@ func Flock(fd, how int) error {
+ 	return err
+ }
+ 
++func ioctl(fd int, req uint, arg uintptr) (err error) {
++	if jsHackpad.IsUndefined() || jsHackpad.Get("ioctl").IsUndefined() {
++		return ENOTTY
++	}
++
++	result := jsHackpad.Call("ioctl", fd, int(req))
++	if result.IsNull() || result.IsUndefined() {
++		return ENOTTY
++	}
++
++	switch req {
++	case TIOCGWINSZ:
++		ws := (*Winsize)(unsafe.Pointer(arg))
++		ws.Row = uint16(result.Get("rows").Int())
++		ws.Col = uint16(result.Get("cols").Int())
++	case TIOCGETA:
++		// To indicate "this is a terminal", we just need a non-error return.
++		// Populate a dummy termios to satisfy callers that inspect the struct.
++		if arg != 0 {
++			t := (*Termios)(unsafe.Pointer(arg))
++			t.Cflag = uint64(result.Get("baudRate").Int())
++		}
++	default:
++		return ENOTTY
++	}
++
++	return nil
++}
++
+ func StartProcess(name string, argv []string, attr *ProcAttr) (pid int, handle uintptr, err error) {
+ 	if len(argv) == 0 {
+ 		// ensure always at least 1 arg
