@@ -1,0 +1,43 @@
+From 80d671fcd51b2b7fb6ec115ba9f6331bed1f7919 Mon Sep 17 00:00:00 2001
+Message-ID: <80d671fcd51b2b7fb6ec115ba9f6331bed1f7919.1778922107.git.navigaid@gmail.com>
+In-Reply-To: <350d7d2b3a626317d33f511e600a9f72a182950a.1778922107.git.navigaid@gmail.com>
+References: <350d7d2b3a626317d33f511e600a9f72a182950a.1778922107.git.navigaid@gmail.com>
+From: Broken Pipe <navigaid@gmail.com>
+Date: Wed, 6 May 2026 01:41:07 +0800
+Subject: [PATCH 3/4] hackpad: allow extra large argv
+
+set wasmMinDataAddr to 128K
+---
+ lib/wasm/wasm_exec.js            | 2 +-
+ src/cmd/link/internal/ld/data.go | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/lib/wasm/wasm_exec.js b/lib/wasm/wasm_exec.js
+index ea1a7915bd..8e9e754a50 100644
+--- a/lib/wasm/wasm_exec.js
++++ b/lib/wasm/wasm_exec.js
+@@ -542,7 +542,7 @@
+ 
+ 			// The linker guarantees global data starts from at least wasmMinDataAddr.
+ 			// Keep in sync with cmd/link/internal/ld/data.go:wasmMinDataAddr.
+-			const wasmMinDataAddr = 4096 + 8192;
++			const wasmMinDataAddr = 131072;
+ 			if (offset >= wasmMinDataAddr) {
+ 				throw new Error("total length of command line and environment variables exceeds limit");
+ 			}
+diff --git a/src/cmd/link/internal/ld/data.go b/src/cmd/link/internal/ld/data.go
+index 5b6dabb62b..864b1b9a62 100644
+--- a/src/cmd/link/internal/ld/data.go
++++ b/src/cmd/link/internal/ld/data.go
+@@ -2834,7 +2834,7 @@ func splitTextSections(ctxt *Link) bool {
+ // to store command line args and environment variables.
+ // Data sections starts from at least address 12288.
+ // Keep in sync with wasm_exec.js.
+-const wasmMinDataAddr = 4096 + 8192
++const wasmMinDataAddr = 131072 // 128K
+ 
+ // address assigns virtual addresses to all segments and sections and
+ // returns all segments in file order.
+-- 
+2.54.0
+

@@ -1,0 +1,444 @@
+From 350d7d2b3a626317d33f511e600a9f72a182950a Mon Sep 17 00:00:00 2001
+Message-ID: <350d7d2b3a626317d33f511e600a9f72a182950a.1778922107.git.navigaid@gmail.com>
+From: John Starich <johnstarich@johnstarich.com>
+Date: Thu, 29 Jul 2021 21:42:28 -0500
+Subject: [PATCH 1/4] hackpad: Add initial go-wasm patches
+
+Avoid cyclic panic and stack overflow when overriding fs
+---
+ lib/wasm/wasm_exec.js                         |  24 +--
+ .../internal/filelock/filelock_other.go       |   2 +-
+ .../internal/filelock/filelock_unix.go        |   2 +-
+ src/internal/syscall/unix/constants.go        |   2 +-
+ src/internal/syscall/unix/eaccess_js.go       |  13 ++
+ src/internal/syscall/unix/nofollow_posix.go   |   2 +-
+ src/os/exec/lp_unix.go                        |   2 +-
+ src/os/exec/lp_wasm.go                        |  29 ----
+ src/os/pipe_unix.go                           |   2 +-
+ src/os/pipe_wasm.go                           |  16 --
+ src/syscall/fs_js.go                          |   4 -
+ src/syscall/fs_js_hackpad.go                  |  21 +++
+ src/syscall/syscall_js.go                     |   8 -
+ src/syscall/syscall_js_hackpad.go             | 139 ++++++++++++++++++
+ 14 files changed, 192 insertions(+), 74 deletions(-)
+ create mode 100644 src/internal/syscall/unix/eaccess_js.go
+ delete mode 100644 src/os/exec/lp_wasm.go
+ delete mode 100644 src/os/pipe_wasm.go
+ create mode 100644 src/syscall/fs_js_hackpad.go
+ create mode 100644 src/syscall/syscall_js_hackpad.go
+
+diff --git a/lib/wasm/wasm_exec.js b/lib/wasm/wasm_exec.js
+index d71af9e97e..ea1a7915bd 100644
+--- a/lib/wasm/wasm_exec.js
++++ b/lib/wasm/wasm_exec.js
+@@ -11,19 +11,21 @@
+ 		return err;
+ 	};
+ 
++	let outputBuf = "";
++	const defaultWriteSync = (fd, buf) => {
++		outputBuf += decoder.decode(buf);
++		const nl = outputBuf.lastIndexOf("\n");
++		if (nl != -1) {
++			console.log(outputBuf.substring(0, nl));
++			outputBuf = outputBuf.substring(nl + 1);
++		}
++		return buf.length;
++	}
++
+ 	if (!globalThis.fs) {
+-		let outputBuf = "";
+ 		globalThis.fs = {
+ 			constants: { O_WRONLY: -1, O_RDWR: -1, O_CREAT: -1, O_TRUNC: -1, O_APPEND: -1, O_EXCL: -1, O_DIRECTORY: -1 }, // unused
+-			writeSync(fd, buf) {
+-				outputBuf += decoder.decode(buf);
+-				const nl = outputBuf.lastIndexOf("\n");
+-				if (nl != -1) {
+-					console.log(outputBuf.substring(0, nl));
+-					outputBuf = outputBuf.substring(nl + 1);
+-				}
+-				return buf.length;
+-			},
++			writeSync: defaultWriteSync,
+ 			write(fd, buf, offset, length, position, callback) {
+ 				if (offset !== 0 || length !== buf.length || position !== null) {
+ 					callback(enosys());
+@@ -252,7 +254,7 @@
+ 						const fd = getInt64(sp + 8);
+ 						const p = getInt64(sp + 16);
+ 						const n = this.mem.getInt32(sp + 24, true);
+-						fs.writeSync(fd, new Uint8Array(this._inst.exports.mem.buffer, p, n));
++						defaultWriteSync(fd, new Uint8Array(this._inst.exports.mem.buffer, p, n));
+ 					},
+ 
+ 					// func resetMemoryDataView()
+diff --git a/src/cmd/go/internal/lockedfile/internal/filelock/filelock_other.go b/src/cmd/go/internal/lockedfile/internal/filelock/filelock_other.go
+index b16709ed51..ff36ebfb44 100644
+--- a/src/cmd/go/internal/lockedfile/internal/filelock/filelock_other.go
++++ b/src/cmd/go/internal/lockedfile/internal/filelock/filelock_other.go
+@@ -2,7 +2,7 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build !unix && !windows
++//go:build !unix && !(js && wasm) && !windows
+ 
+ package filelock
+ 
+diff --git a/src/cmd/go/internal/lockedfile/internal/filelock/filelock_unix.go b/src/cmd/go/internal/lockedfile/internal/filelock/filelock_unix.go
+index 6f73b1bfee..e891ce918d 100644
+--- a/src/cmd/go/internal/lockedfile/internal/filelock/filelock_unix.go
++++ b/src/cmd/go/internal/lockedfile/internal/filelock/filelock_unix.go
+@@ -2,7 +2,7 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build darwin || dragonfly || freebsd || illumos || linux || netbsd || openbsd
++//go:build darwin || dragonfly || freebsd || illumos || (js && wasm) || linux || netbsd || openbsd
+ 
+ package filelock
+ 
+diff --git a/src/internal/syscall/unix/constants.go b/src/internal/syscall/unix/constants.go
+index 6a78dda795..154f4d3551 100644
+--- a/src/internal/syscall/unix/constants.go
++++ b/src/internal/syscall/unix/constants.go
+@@ -2,7 +2,7 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build unix || wasip1
++//go:build unix || wasip1 || (js && wasm)
+ 
+ package unix
+ 
+diff --git a/src/internal/syscall/unix/eaccess_js.go b/src/internal/syscall/unix/eaccess_js.go
+new file mode 100644
+index 0000000000..914c723860
+--- /dev/null
++++ b/src/internal/syscall/unix/eaccess_js.go
+@@ -0,0 +1,13 @@
++// Copyright 2022 The Go Authors. All rights reserved.
++// Use of this source code is governed by a BSD-style
++// license that can be found in the LICENSE file.
++
++//go:build js && wasm
++
++package unix
++
++import "syscall"
++
++func Eaccess(path string, mode uint32) error {
++	return syscall.ENOSYS
++}
+diff --git a/src/internal/syscall/unix/nofollow_posix.go b/src/internal/syscall/unix/nofollow_posix.go
+index 3a5e0af05d..68d22616ee 100644
+--- a/src/internal/syscall/unix/nofollow_posix.go
++++ b/src/internal/syscall/unix/nofollow_posix.go
+@@ -2,7 +2,7 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build (unix && !dragonfly && !freebsd && !netbsd) || wasip1
++//go:build (unix && !dragonfly && !freebsd && !netbsd) || wasip1 || (js && wasm)
+ 
+ package unix
+ 
+diff --git a/src/os/exec/lp_unix.go b/src/os/exec/lp_unix.go
+index d3b10cc43d..28ae8a9ced 100644
+--- a/src/os/exec/lp_unix.go
++++ b/src/os/exec/lp_unix.go
+@@ -2,7 +2,7 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build unix
++//go:build unix || (js && wasm)
+ 
+ package exec
+ 
+diff --git a/src/os/exec/lp_wasm.go b/src/os/exec/lp_wasm.go
+deleted file mode 100644
+index 1de9076e53..0000000000
+--- a/src/os/exec/lp_wasm.go
++++ /dev/null
+@@ -1,29 +0,0 @@
+-// Copyright 2018 The Go Authors. All rights reserved.
+-// Use of this source code is governed by a BSD-style
+-// license that can be found in the LICENSE file.
+-
+-//go:build wasm
+-
+-package exec
+-
+-import (
+-	"errors"
+-)
+-
+-// ErrNotFound is the error resulting if a path search failed to find an executable file.
+-var ErrNotFound = errors.New("executable file not found in $PATH")
+-
+-// LookPath searches for an executable named file in the
+-// directories named by the PATH environment variable.
+-// If file contains a slash, it is tried directly and the PATH is not consulted.
+-// The result may be an absolute path or a path relative to the current directory.
+-func lookPath(file string) (string, error) {
+-	// Wasm can not execute processes, so act as if there are no executables at all.
+-	return "", &Error{file, ErrNotFound}
+-}
+-
+-// lookExtensions is a no-op on non-Windows platforms, since
+-// they do not restrict executables to specific extensions.
+-func lookExtensions(path, dir string) (string, error) {
+-	return path, nil
+-}
+diff --git a/src/os/pipe_unix.go b/src/os/pipe_unix.go
+index 5c1a953fda..dd29796291 100644
+--- a/src/os/pipe_unix.go
++++ b/src/os/pipe_unix.go
+@@ -2,7 +2,7 @@
+ // Use of this source code is governed by a BSD-style
+ // license that can be found in the LICENSE file.
+ 
+-//go:build aix || darwin
++//go:build aix || darwin || (js && wasm)
+ 
+ package os
+ 
+diff --git a/src/os/pipe_wasm.go b/src/os/pipe_wasm.go
+deleted file mode 100644
+index 87a29b1f71..0000000000
+--- a/src/os/pipe_wasm.go
++++ /dev/null
+@@ -1,16 +0,0 @@
+-// Copyright 2023 The Go Authors. All rights reserved.
+-// Use of this source code is governed by a BSD-style
+-// license that can be found in the LICENSE file.
+-
+-//go:build wasm
+-
+-package os
+-
+-import "syscall"
+-
+-// Pipe returns a connected pair of Files; reads from r return bytes written to w.
+-// It returns the files and an error, if any.
+-func Pipe() (r *File, w *File, err error) {
+-	// Neither GOOS=js nor GOOS=wasip1 have pipes.
+-	return nil, nil, NewSyscallError("pipe", syscall.ENOSYS)
+-}
+diff --git a/src/syscall/fs_js.go b/src/syscall/fs_js.go
+index 7ef3cdee14..968a483875 100644
+--- a/src/syscall/fs_js.go
++++ b/src/syscall/fs_js.go
+@@ -519,10 +519,6 @@ func Dup2(fd, newfd int) error {
+ 	return ENOSYS
+ }
+ 
+-func Pipe(fd []int) error {
+-	return ENOSYS
+-}
+-
+ func fsCall(name string, args ...any) (js.Value, error) {
+ 	type callResult struct {
+ 		val js.Value
+diff --git a/src/syscall/fs_js_hackpad.go b/src/syscall/fs_js_hackpad.go
+new file mode 100644
+index 0000000000..e011a35b4d
+--- /dev/null
++++ b/src/syscall/fs_js_hackpad.go
+@@ -0,0 +1,21 @@
++//go:build js && wasm
++
++package syscall
++
++func Pipe(fd []int) error {
++	if jsFS.Get("pipe").IsUndefined() {
++		// fs.pipe is unavailable on Node.js and JS
++		// no known JS implementation exists, but is needed to run Go
++		return ENOSYS
++	}
++
++	jsFD, err := fsCall("pipe")
++	if err != nil {
++		return err
++	}
++	fd[0] = jsFD.Index(0).Int()
++	fd[1] = jsFD.Index(1).Int()
++	files[fd[0]] = &jsFile{}
++	files[fd[1]] = &jsFile{}
++	return nil
++}
+diff --git a/src/syscall/syscall_js.go b/src/syscall/syscall_js.go
+index bb8d70b73d..cedaf25559 100644
+--- a/src/syscall/syscall_js.go
++++ b/src/syscall/syscall_js.go
+@@ -232,8 +232,6 @@ var ForkLock sync.RWMutex
+ 
+ type WaitStatus uint32
+ 
+-func (w WaitStatus) Exited() bool       { return false }
+-func (w WaitStatus) ExitStatus() int    { return 0 }
+ func (w WaitStatus) Signaled() bool     { return false }
+ func (w WaitStatus) Signal() Signal     { return 0 }
+ func (w WaitStatus) CoreDump() bool     { return false }
+@@ -337,12 +335,6 @@ func Kill(pid int, signum Signal) error { return ENOSYS }
+ func Sendfile(outfd int, infd int, offset *int64, count int) (written int, err error) {
+ 	return 0, ENOSYS
+ }
+-func StartProcess(argv0 string, argv []string, attr *ProcAttr) (pid int, handle uintptr, err error) {
+-	return 0, 0, ENOSYS
+-}
+-func Wait4(pid int, wstatus *WaitStatus, options int, rusage *Rusage) (wpid int, err error) {
+-	return 0, ENOSYS
+-}
+ 
+ type Iovec struct{} // dummy
+ 
+diff --git a/src/syscall/syscall_js_hackpad.go b/src/syscall/syscall_js_hackpad.go
+new file mode 100644
+index 0000000000..825f29b620
+--- /dev/null
++++ b/src/syscall/syscall_js_hackpad.go
+@@ -0,0 +1,139 @@
++//go:build js && wasm
++
++package syscall
++
++import (
++	"syscall/js"
++)
++
++const (
++	LOCK_SH = 0x1
++	LOCK_EX = 0x2
++	LOCK_UN = 0x8
++)
++
++var jsChildProcess = js.Global().Get("child_process")
++
++func Flock(fd, how int) error {
++	_, err := fsCall("flock", fd, how)
++	return err
++}
++
++func StartProcess(name string, argv []string, attr *ProcAttr) (pid int, handle uintptr, err error) {
++	if len(argv) == 0 {
++		// ensure always at least 1 arg
++		argv = []string{name}
++	}
++	jsArgs := make([]interface{}, 0, len(argv)-1) // JS args don't include the command name
++	for _, arg := range argv[1:] {
++		jsArgs = append(jsArgs, arg)
++	}
++
++	cwd := attr.Dir
++	if cwd == "" {
++		cwd, err = Getwd()
++		if err != nil {
++			return 0, 0, err
++		}
++	}
++	var env map[string]interface{}
++	if attr.Env != nil {
++		env = splitEnvPairs(attr.Env)
++	} else {
++		env = splitEnvPairs(Environ())
++	}
++
++	var fds []interface{}
++	for _, f := range attr.Files {
++		fds = append(fds, f)
++	}
++
++	ret := jsChildProcess.Call("spawn", name, jsArgs, map[string]interface{}{
++		"argv0": argv[0],
++		"cwd":   attr.Dir,
++		"env":   env,
++		"stdio": fds,
++	})
++	pid = ret.Get("pid").Int()
++	jsErr := ret.Get("error")
++	if jsErr.Type() == js.TypeObject {
++		err = js.Error{jsErr}
++	}
++	return pid, 0, err
++}
++
++const (
++	exitCodeShift = 8
++	exitedMask    = 0x7F
++)
++
++func (w WaitStatus) Exited() bool    { return w&exitedMask != 0 }
++func (w WaitStatus) ExitStatus() int { return int(w >> exitCodeShift) }
++
++func Wait4(pid int, wstatus *WaitStatus, options int, rusage *Rusage) (wpid int, err error) {
++	if pid <= 0 {
++		// waiting on any child process is not currently supported
++		return -1, ENOSYS
++	}
++	// TODO support options and rusage
++	wpid = pid
++	proc, err := childProcessCall("wait", pid)
++	if procPID := proc.Get("pid"); procPID.Type() == js.TypeNumber {
++		wpid = procPID.Int()
++	}
++	if exitCode := proc.Get("exitCode"); exitCode.Type() == js.TypeNumber && wstatus != nil {
++		status := 0
++		status |= exitCode.Int() << exitCodeShift // exit code
++		status |= exitedMask                      // exited
++		*wstatus = WaitStatus(status)
++	}
++	return wpid, err
++}
++
++func childProcessCall(name string, args ...interface{}) (js.Value, error) {
++	type callResult struct {
++		val js.Value
++		err error
++	}
++
++	c := make(chan callResult, 1)
++	f := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
++		var res callResult
++
++		if jsErr := args[0]; !jsErr.IsNull() {
++			res.err = mapJSError(jsErr)
++		}
++
++		res.val = js.Undefined()
++		if len(args) >= 2 {
++			res.val = args[1]
++		}
++
++		c <- res
++		return nil
++	})
++	defer f.Release()
++	jsChildProcess.Call(name, append(args, f)...)
++	res := <-c
++	return res.val, res.err
++}
++
++func splitEnvPairs(pairs []string) map[string]interface{} {
++	env := make(map[string]interface{})
++	for _, pair := range pairs {
++		equalIndex := -1
++		for i, r := range pair {
++			if r == '=' {
++				equalIndex = i
++				break
++			}
++		}
++		if equalIndex == -1 {
++			env[pair] = ""
++		} else {
++			key, value := pair[:equalIndex], pair[equalIndex+1:]
++			env[key] = value
++		}
++	}
++	return env
++}
+-- 
+2.54.0
+

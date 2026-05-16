@@ -1,0 +1,39 @@
+From df29017859639b6074b6a6d6c462112f13a21115 Mon Sep 17 00:00:00 2001
+Message-ID: <df29017859639b6074b6a6d6c462112f13a21115.1778922107.git.navigaid@gmail.com>
+In-Reply-To: <350d7d2b3a626317d33f511e600a9f72a182950a.1778922107.git.navigaid@gmail.com>
+References: <350d7d2b3a626317d33f511e600a9f72a182950a.1778922107.git.navigaid@gmail.com>
+From: Broken Pipe <navigaid@gmail.com>
+Date: Wed, 13 May 2026 14:10:25 +0800
+Subject: [PATCH 2/4] hackpad: provide sane defaults for fs syscalls
+
+init():
+
+ constants.Set("O_DIRECTORY", O_DIRECTORY)
+ ...
+
+allowing dynamically patching window.fs.constants
+---
+ src/syscall/fs_js.go | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/syscall/fs_js.go b/src/syscall/fs_js.go
+index 968a483875..dce36e1c28 100644
+--- a/src/syscall/fs_js.go
++++ b/src/syscall/fs_js.go
+@@ -37,6 +37,13 @@ var (
+ )
+ 
+ func init() {
++	constants.Set("O_WRONLY", O_WRONLY)
++	constants.Set("O_RDWR", O_RDWR)
++	constants.Set("O_CREAT", O_CREAT)
++	constants.Set("O_TRUNC", O_TRUNC)
++	constants.Set("O_APPEND", O_APPEND)
++	constants.Set("O_EXCL", O_EXCL)
++	constants.Set("O_DIRECTORY", O_DIRECTORY)
+ 	oDir := constants.Get("O_DIRECTORY")
+ 	if !oDir.IsUndefined() {
+ 		nodeDIRECTORY = oDir.Int()
+-- 
+2.54.0
+

@@ -1,0 +1,153 @@
+From c63594911bd3d543ac755a00886c20f3395ce03a Mon Sep 17 00:00:00 2001
+Message-ID: <c63594911bd3d543ac755a00886c20f3395ce03a.1778922107.git.navigaid@gmail.com>
+In-Reply-To: <350d7d2b3a626317d33f511e600a9f72a182950a.1778922107.git.navigaid@gmail.com>
+References: <350d7d2b3a626317d33f511e600a9f72a182950a.1778922107.git.navigaid@gmail.com>
+From: Copilot <198982749+Copilot@users.noreply.github.com>
+Date: Wed, 13 May 2026 14:25:06 +0800
+Subject: [PATCH 4/4] Add manual workflow to build and release modified Go
+ toolchain (#1)
+
+* chore: add build-release GitHub Actions workflow
+
+Agent-Logs-Url: https://github.com/btwiuse/go/sessions/476ae636-dd31-4b7b-9cb3-1b5562ccc66d
+
+Co-authored-by: btwiuse <54848194+btwiuse@users.noreply.github.com>
+
+* Potential fix for pull request finding
+
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+
+* fix: capture actual checked-out SHA for release notes
+
+Agent-Logs-Url: https://github.com/btwiuse/go/sessions/afa92d6a-1352-40a9-be49-df8e458f6eac
+
+Co-authored-by: btwiuse <54848194+btwiuse@users.noreply.github.com>
+
+---------
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+Co-authored-by: btwiuse <54848194+btwiuse@users.noreply.github.com>
+Co-authored-by: Copilot Autofix powered by AI <175728472+Copilot@users.noreply.github.com>
+---
+ .github/workflows/build-release.yml | 109 ++++++++++++++++++++++++++++
+ 1 file changed, 109 insertions(+)
+ create mode 100644 .github/workflows/build-release.yml
+
+diff --git a/.github/workflows/build-release.yml b/.github/workflows/build-release.yml
+new file mode 100644
+index 0000000000..6fff76a55b
+--- /dev/null
++++ b/.github/workflows/build-release.yml
+@@ -0,0 +1,109 @@
++name: Build and Release Go Toolchain
++
++on:
++  workflow_dispatch:
++    inputs:
++      ref:
++        description: 'Branch, tag, or commit SHA to build (leave empty for default branch)'
++        required: false
++        default: ''
++      version:
++        description: 'Release version tag (e.g. go1.26.0-btwiuse.1)'
++        required: true
++        default: 'go1.26.0-btwiuse.1'
++      goos:
++        description: 'Target OS (e.g. linux, darwin, windows)'
++        required: false
++        default: 'linux'
++      goarch:
++        description: 'Target architecture (e.g. amd64, arm64)'
++        required: false
++        default: 'amd64'
++
++jobs:
++  build:
++    runs-on: ubuntu-latest
++    permissions:
++      contents: write
++
++    steps:
++      - name: Checkout repository
++        uses: actions/checkout@v4
++        with:
++          ref: ${{ inputs.ref }}
++
++      - name: Capture actual checked-out revision
++        id: revision
++        run: |
++          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
++          echo "ref=${{ inputs.ref || github.ref_name }}" >> "$GITHUB_OUTPUT"
++
++      - name: Set up Go bootstrap (go1.26)
++        uses: actions/setup-go@v5
++        with:
++          go-version: '1.26'
++          cache: false
++
++      - name: Set GOROOT_BOOTSTRAP
++        run: echo "GOROOT_BOOTSTRAP=$(go env GOROOT)" >> "$GITHUB_ENV"
++
++      - name: Build Go toolchain
++        env:
++          GOOS: ${{ inputs.goos }}
++          GOARCH: ${{ inputs.goarch }}
++        run: |
++          cd src
++          ./make.bash
++
++      - name: Package toolchain
++        id: package
++        env:
++          VERSION: ${{ inputs.version }}
++          GOOS: ${{ inputs.goos }}
++          GOARCH: ${{ inputs.goarch }}
++        run: |
++          TARNAME="${VERSION}.${GOOS}-${GOARCH}.tar.gz"
++          TARPATH="${RUNNER_TEMP}/${TARNAME}"
++
++          # Package the repository as 'go/' to match the official release layout.
++          # Exclude version-control and CI metadata that are not part of the distribution.
++          tar -czf "${TARPATH}" \
++            --exclude='.git' \
++            --exclude='.github' \
++            --transform 's|^\.|go|' \
++            -C "$GITHUB_WORKSPACE" .
++
++          echo "tarname=${TARNAME}" >> "$GITHUB_OUTPUT"
++          echo "tarpath=${TARPATH}" >> "$GITHUB_OUTPUT"
++
++      - name: Compute SHA256 checksum
++        id: checksum
++        run: |
++          SHA256=$(sha256sum "${{ steps.package.outputs.tarpath }}" | awk '{print $1}')
++          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
++
++      - name: Create GitHub Release
++        uses: softprops/action-gh-release@v2
++        with:
++          tag_name: ${{ inputs.version }}
++          name: ${{ inputs.version }}
++          body: |
++            ## ${{ inputs.version }}
++
++            Modified Go toolchain built from commit `${{ steps.revision.outputs.sha }}` (`${{ steps.revision.outputs.ref }}`).
++
++            ### Download
++
++            | File | SHA256 |
++            |------|--------|
++            | `${{ steps.package.outputs.tarname }}` | `${{ steps.checksum.outputs.sha256 }}` |
++
++            ### Usage
++
++            ```bash
++            tar -C /usr/local -xzf ${{ steps.package.outputs.tarname }}
++            export PATH="/usr/local/go/bin:$PATH"
++            ```
++          files: ${{ steps.package.outputs.tarpath }}
++          draft: false
++          prerelease: false
+-- 
+2.54.0
+
