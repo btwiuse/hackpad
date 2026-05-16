@@ -5,7 +5,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/hack-pad/hush"
+	"github.com/btwiuse/hush"
 )
 
 func main() {
