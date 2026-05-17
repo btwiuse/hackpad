@@ -18,9 +18,9 @@ let progressListeners = [];
 
 async function init() {
   const startTime = new Date().getTime()
-  const fs = window.fs || (window.fs = {})
-  fs.constants = fs.constants || {}
-  Object.assign(fs.constants, fsConstants)
+  const windowFs = window.fs || (window.fs = {})
+  windowFs.constants = windowFs.constants || {}
+  Object.assign(windowFs.constants, fsConstants)
   const go = new Go();
   const cmd = await WebAssembly.instantiateStreaming(fetch(`wasm/main.wasm`), go.importObject)
   go.env = {
