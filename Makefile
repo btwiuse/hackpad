@@ -71,7 +71,7 @@ cache/go${GO_VERSION}: cache
 		git clone \
 			--depth 1 \
 			--single-branch \
-			--branch hackpad/release-branch.go${GO_VERSION} \
+			--branch hackpad/master \
 			https://github.com/btwiuse/go \
 			"$$TMP"; \
 		pushd "$$TMP/src"; \
