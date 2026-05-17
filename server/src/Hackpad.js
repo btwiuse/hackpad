@@ -2,12 +2,25 @@ import WebAssembly from './WebAssembly';
 import 'whatwg-fetch';
 
 const Go = window.Go; // loaded from wasm_exec.js script in index.html
+const fsConstants = {
+  O_RDONLY: 0,
+  O_WRONLY: 1,
+  O_RDWR: 2,
+  O_CREAT: 64,
+  O_EXCL: 128,
+  O_TRUNC: 512,
+  O_APPEND: 1024,
+  O_DIRECTORY: 65536,
+};
 
 let overlayProgress = 0;
 let progressListeners = [];
 
 async function init() {
   const startTime = new Date().getTime()
+  const fs = window.fs || (window.fs = {})
+  fs.constants = fs.constants || {}
+  Object.assign(fs.constants, fsConstants)
   const go = new Go();
   const cmd = await WebAssembly.instantiateStreaming(fetch(`wasm/main.wasm`), go.importObject)
   go.env = {
@@ -15,6 +28,7 @@ async function init() {
     'GOPROXY': 'https://proxy.golang.org/',
     'GOROOT': '/usr/local/go',
     'HOME': '/home/me',
+    'TMPDIR': '/tmp',
     'PATH': '/bin:/home/me/go/bin:/usr/local/go/bin/js_wasm:/usr/local/go/pkg/tool/js_wasm',
   }
   go.run(cmd.instance)
@@ -22,6 +36,7 @@ async function init() {
   console.debug(`hackpad status: ${hackpad.ready ? 'ready' : 'not ready'}`)
 
   const mkdir = promisify(fs.mkdir)
+  await mkdir("/tmp", {recursive: true, mode: 0o777})
   await mkdir("/bin", {mode: 0o700})
   await hackpad.overlayIndexedDB('/bin', {cache: true})
   await hackpad.overlayIndexedDB('/home/me')
