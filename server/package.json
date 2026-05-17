@@ -4,19 +4,19 @@
   "private": true,
   "homepage": ".",
   "dependencies": {
-    "@fontsource/roboto": "^4.5.0",
-    "@fortawesome/fontawesome-free": "^5.15.1",
-    "@testing-library/jest-dom": "^4.2.4",
-    "@testing-library/react": "^9.3.2",
-    "@testing-library/user-event": "^7.1.2",
-    "codemirror": "^5.57.0",
-    "mobile-detect": "^1.4.4",
-    "react": "^16.13.1",
-    "react-dom": "^16.13.1",
-    "react-scripts": "3.4.3",
-    "whatwg-fetch": "^3.4.0",
-    "xterm": "^4.8.1",
-    "xterm-addon-fit": "^0.4.0"
+    "@fontsource/roboto": "^5.2.10",
+    "@fortawesome/fontawesome-free": "^7.2.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "codemirror": "^5.65.21",
+    "mobile-detect": "^1.4.5",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-scripts": "5.0.1",
+    "whatwg-fetch": "^3.6.20"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -41,6 +41,6 @@
     ]
   },
   "devDependencies": {
-    "nodemon": "^2.0.4"
+    "nodemon": "^3.1.14"
   }
 }

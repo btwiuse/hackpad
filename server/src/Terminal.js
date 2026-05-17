@@ -1,8 +1,8 @@
 import React from 'react';
 
-import 'xterm/css/xterm.css';
-import { Terminal as XTerminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
+import '@xterm/xterm/css/xterm.css';
+import { Terminal as XTerminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
 import { listenColorScheme } from './ColorScheme';
 
 export default function Terminal({ args, ...props }) {
@@ -27,24 +27,24 @@ export function newTerminal(elem) {
   const dark = "rgb(33, 33, 33)"
   const light = "white"
   listenColorScheme({
-    light: () => term.setOption('theme', {
+    light: () => { term.options.theme = {
       background: light,
       foreground: dark,
       cursor: dark,
-    }),
-    dark: () => term.setOption('theme', {
+    } },
+    dark: () => { term.options.theme = {
       background: dark,
       foreground: light,
       cursor: light,
-    }),
+    } },
   })
 
   term.open(elem)
-  term.setOption('cursorBlink', true)
+  term.options.cursorBlink = true
   term.focus()
   const fit = () => {
     const fontSize = parseFloat(getComputedStyle(elem).fontSize)
-    term.setOption('fontSize', fontSize * fontScale)
+    term.options.fontSize = fontSize * fontScale
     fitAddon.fit()
   }
 
