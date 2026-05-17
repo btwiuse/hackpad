@@ -101,13 +101,13 @@ server/public/wasm/wasm_exec.js: go
 
 .PHONY: node-static
 node-static:
-	npm --prefix=server ci
+	npm --prefix=server install
 	NODE_OPTIONS=--openssl-legacy-provider npm --prefix=server run build
 
 .PHONY: watch
 watch:
 	@if [[ ! -d server/node_modules ]]; then \
-		npm --prefix=server ci; \
+		npm --prefix=server install; \
 	fi
 	npm --prefix=server run start-go & \
 	npm --prefix=server start
