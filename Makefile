@@ -102,7 +102,7 @@ server/public/wasm/wasm_exec.js: go
 .PHONY: node-static
 node-static:
 	npm --prefix=server ci
-	npm --prefix=server run build
+	NODE_OPTIONS=--openssl-legacy-provider npm --prefix=server run build
 
 .PHONY: watch
 watch:

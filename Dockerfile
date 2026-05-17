@@ -7,7 +7,7 @@ RUN make go
 COPY . /src
 RUN make go-static
 
-FROM node:14 as node-builder
+FROM node:26 as node-builder
 WORKDIR /src
 COPY Makefile /src
 COPY ./server /src/server
