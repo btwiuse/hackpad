@@ -3,7 +3,7 @@ module github.com/hack-pad/hackpad
 go 1.26.3
 
 require (
-	github.com/avct/uasurfer v0.0.0-20191028135549-26b5daa857f1
+	github.com/LumenResearch/uasurfer v0.0.0-20260126094926-dace53404a8d
 	github.com/btwiuse/hush v0.1.3
 	github.com/hack-pad/go-indexeddb v0.3.2
 	github.com/hack-pad/hackpadfs v0.2.1
