@@ -266,7 +266,7 @@ func (f *FileDescriptors) Fchmod(fd FID, mode os.FileMode) error {
 	if fileDescriptor == nil {
 		return interop.BadFileNumber(fd)
 	}
-	return hackpadfs.Chmod(filesystem, f.resolvePath(fileDescriptor.FileName()), mode)
+	return hackpadfs.ChmodFile(fileDescriptor.file, mode)
 }
 
 type LockAction int
