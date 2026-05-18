@@ -44,6 +44,8 @@ func NewFileDescriptor(fid FID, absPath string, flags int, mode os.FileMode) (*f
 
 // isFilesystemPath returns true when absPath refers to a regular file in hackpadfs
 // (as opposed to special device files handled outside the filesystem).
+// Note: paths in hackpad have their leading '/' stripped by common.ResolvePath,
+// matching the format used in getFile's switch cases.
 func isFilesystemPath(absPath string) bool {
 	switch absPath {
 	case "dev/null", "dev/stdin", "dev/stdout", "dev/stderr":
