@@ -165,6 +165,9 @@ func (f *FileDescriptors) Fstat(fd FID) (os.FileInfo, error) {
 	if fileDescriptor == nil {
 		return nil, interop.BadFileNumber(fd)
 	}
+	if absPath := fileDescriptor.absPath; absPath != "" {
+		return hackpadfs.Stat(filesystem, absPath)
+	}
 	return fileDescriptor.file.Stat()
 }
 

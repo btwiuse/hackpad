@@ -24,8 +24,9 @@ type fileDescriptor struct {
 }
 
 type fileCore struct {
-	file hackpadfs.File
-	mode os.FileMode
+	file    hackpadfs.File
+	mode    os.FileMode
+	absPath string // full filesystem path, empty for special files (pipes, devices, etc.)
 
 	openMu     sync.Mutex
 	openCounts map[common.PID]*atomic.Uint64
@@ -35,7 +36,21 @@ type fileCore struct {
 func NewFileDescriptor(fid FID, absPath string, flags int, mode os.FileMode) (*fileDescriptor, error) {
 	file, err := getFile(absPath, flags, mode)
 	descriptor := newIrregularFileDescriptor(fid, path.Base(absPath), file, mode)
+	if isFilesystemPath(absPath) {
+		descriptor.absPath = absPath
+	}
 	return descriptor, err
+}
+
+// isFilesystemPath returns true when absPath refers to a regular file in hackpadfs
+// (as opposed to special device files handled outside the filesystem).
+func isFilesystemPath(absPath string) bool {
+	switch absPath {
+	case "dev/null", "dev/stdin", "dev/stdout", "dev/stderr":
+		return false
+	default:
+		return true
+	}
 }
 
 func newIrregularFileDescriptor(fid FID, name string, file hackpadfs.File, mode hackpadfs.FileMode) *fileDescriptor {
