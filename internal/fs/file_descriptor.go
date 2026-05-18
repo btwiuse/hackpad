@@ -3,7 +3,6 @@ package fs
 import (
 	"fmt"
 	"os"
-	"path"
 	"strings"
 	"sync"
 
@@ -34,7 +33,7 @@ type fileCore struct {
 
 func NewFileDescriptor(fid FID, absPath string, flags int, mode os.FileMode) (*fileDescriptor, error) {
 	file, err := getFile(absPath, flags, mode)
-	descriptor := newIrregularFileDescriptor(fid, path.Base(absPath), file, mode)
+	descriptor := newIrregularFileDescriptor(fid, absPath, file, mode)
 	return descriptor, err
 }
 
