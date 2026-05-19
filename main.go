@@ -67,6 +67,7 @@ func main() {
 	if err := dom.Start(); err != nil {
 		panic(err)
 	}
+	interop.SetInitialized()
 
 	select {}
 }

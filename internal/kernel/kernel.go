@@ -2,7 +2,7 @@ package kernel
 
 import (
 	"github.com/hack-pad/hackpad/internal/common"
-	"go.uber.org/atomic"
+	"sync/atomic"
 )
 
 const (
@@ -10,9 +10,12 @@ const (
 )
 
 var (
-	lastPID = atomic.NewUint64(minPID)
+	lastPID atomic.Uint64
 )
 
 func ReservePID() common.PID {
-	return common.PID(lastPID.Inc())
+	if lastPID.Load() == 0 {
+		lastPID.Store(minPID)
+	}
+	return common.PID(lastPID.Add(1))
 }

@@ -21,7 +21,7 @@ import (
 
 type Local struct {
 	localJS         *jsworker.Local
-	process         *process.Process
+	process         process.Process
 	processStartCtx context.Context
 	pids            map[common.PID]*Remote
 }
@@ -52,7 +52,7 @@ func NewLocal(ctx context.Context, localJS *jsworker.Local) (_ *Local, err error
 		interop.StringsFromJSValue(argv),
 		workingDirectory.String(),
 		parseOpenFiles(openFiles),
-		interop.StringMapFromJSObject(env),
+		stringMapFromJSValue(env),
 	)
 	if err != nil {
 		return nil, err
@@ -194,6 +194,15 @@ func makeExitMessage(exitCode int) js.Value {
 	return js.ValueOf(map[string]interface{}{
 		"exitCode": exitCode,
 	})
+}
+
+func stringMapFromJSValue(v js.Value) map[string]string {
+	props := interop.Entries(v)
+	result := make(map[string]string, len(props))
+	for key, value := range props {
+		result[key] = value.String()
+	}
+	return result
 }
 
 func parseOpenFiles(v js.Value) []common.OpenFileAttr {

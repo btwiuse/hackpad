@@ -2,6 +2,8 @@ package fs
 
 import (
 	"io"
+	"os"
+	"time"
 
 	"github.com/hack-pad/hackpadfs"
 	"github.com/pkg/errors"
@@ -38,5 +40,14 @@ func (d *deviceFile) Close() error {
 }
 
 func (d *deviceFile) Stat() (hackpadfs.FileInfo, error) {
-	return newNamedFileInfo(d.name), nil
+	return namedFileInfo(d.name), nil
 }
+
+type namedFileInfo string
+
+func (n namedFileInfo) Name() string       { return string(n) }
+func (n namedFileInfo) Size() int64        { return 0 }
+func (n namedFileInfo) Mode() os.FileMode  { return os.ModeDevice }
+func (n namedFileInfo) ModTime() time.Time { return time.Time{} }
+func (n namedFileInfo) IsDir() bool        { return false }
+func (n namedFileInfo) Sys() interface{}   { return nil }
