@@ -1,12 +1,13 @@
 //go:build js
 
-package main
+package install
 
 import (
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall/js"
 
 	"github.com/hack-pad/hackpad/internal/interop"
@@ -15,10 +16,10 @@ import (
 	"github.com/hack-pad/hackpad/internal/promise"
 )
 
-func installFunc(this js.Value, args []js.Value) interface{} {
+func InstallFunc(this js.Value, args []js.Value) interface{} {
 	resolve, reject, prom := promise.New()
 	go func() {
-		err := install(args)
+		err := Install(args)
 		if err != nil {
 			reject(interop.WrapAsJSError(err, "Failed to install binary"))
 			return
@@ -28,18 +29,18 @@ func installFunc(this js.Value, args []js.Value) interface{} {
 	return prom.JSValue()
 }
 
-func install(args []js.Value) error {
+func Install(args []js.Value) error {
 	if len(args) != 1 {
 		return errors.New("Expected command name to install")
 	}
-	command := args[0].String()
-	command = filepath.Base(command) // ensure no path chars are present
+	cmdpath := args[0].String()
+	command := strings.TrimSuffix(filepath.Base(cmdpath), ".wasm")
 
 	if err := os.MkdirAll("/bin", 0644); err != nil {
 		return err
 	}
 
-	body, err := httpGetFetch("wasm/" + command + ".wasm")
+	body, err := httpGetFetch(cmdpath)
 	if err != nil {
 		return err
 	}
