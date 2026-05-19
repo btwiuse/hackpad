@@ -100,7 +100,7 @@ async function messageOrTimeout(doneListener, timeout) {
       };
       window.addEventListener('message', messageListener);
       window.addEventListener('messageerror', errorListener);
-      timeoutID = setTimeout(() => reject({ error: 'timed out' }), timeout);
+      timeoutID = setTimeout(() => reject({ error: `Hackpad initialization timed out after ${timeout}ms` }), timeout);
     });
   } finally {
     window.removeEventListener('message', messageListener);

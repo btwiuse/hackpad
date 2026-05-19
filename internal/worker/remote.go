@@ -4,6 +4,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"syscall/js"
 
@@ -226,7 +227,7 @@ func bindPortToFile(ctx context.Context, port *jsworker.MessagePort, file hackpa
 		for {
 			n, err := file.Read(buf)
 			if err != nil {
-				if err.Error() != "operation not supported" {
+				if !errors.Is(err, interop.ErrNotImplemented) {
 					log.Error(err)
 				}
 				return
