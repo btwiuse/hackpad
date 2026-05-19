@@ -5,7 +5,7 @@ const Go = window.Go; // loaded from wasm_exec.js script in index.html
 
 let overlayProgress = 0;
 let progressListeners = [];
-let initOnce = null;
+let initPromise = null;
 
 async function init() {
   const startTime = new Date().getTime();
@@ -22,10 +22,10 @@ async function init() {
 }
 
 export function boot() {
-  if (!initOnce) {
-    initOnce = init();
+  if (!initPromise) {
+    initPromise = init();
   }
-  return initOnce;
+  return initPromise;
 }
 
 export async function install(name) {

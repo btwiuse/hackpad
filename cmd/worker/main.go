@@ -52,15 +52,12 @@ func main() {
 }
 
 func setUpFS() error {
-	const dirPermission = 0700
+	const dirPerm = 0700
 	mkdirMount := func(mountPath string, durability idb.TransactionDurability) error {
-		if err := os.MkdirAll(mountPath, dirPermission); err != nil {
+		if err := os.MkdirAll(mountPath, dirPerm); err != nil {
 			return err
 		}
-		if err := overlayIndexedDB(mountPath, durability); err != nil {
-			return err
-		}
-		return nil
+		return overlayIndexedDB(mountPath, durability)
 	}
 
 	if err := mkdirMount("/bin", idb.DurabilityRelaxed); err != nil {

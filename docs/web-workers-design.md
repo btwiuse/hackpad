@@ -110,6 +110,7 @@ To support process stdio and inherited descriptors across workers:
 - `fs.NewFileDescriptorsFromOpenFiles` reconstructs a descriptor table from transferred file metadata.
 - `fs.OpenRawFID` increments open counts and exposes the underlying file object for transfer/binding.
 - `fs.deviceFile` wraps `io.ReadWriteCloser` instances received from worker pipes.
+- The current port still resets inherited regular-file seek offsets to `0` during worker transfer, so non-stdio inherited file positions remain a known limitation that should be fixed in a follow-up.
 
 ### Pipe transport
 

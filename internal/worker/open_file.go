@@ -31,10 +31,14 @@ func readOpenFile(v js.Value) openFile {
 }
 
 func (o openFile) JSValue() js.Value {
+	pipe := js.Null()
+	if o.pipe != nil {
+		pipe = o.pipe.JSValue()
+	}
 	return js.ValueOf(map[string]interface{}{
 		ofFilePath:   o.filePath,
 		ofSeekOffset: o.seekOffset,
-		ofPipe:       o.pipe.JSValue(),
+		ofPipe:       pipe,
 	})
 }
 

@@ -88,6 +88,9 @@ func (p *pipeChan) Sync() error {
 }
 
 func (p *pipeChan) Read(buf []byte) (n int, err error) {
+	if len(buf) == 0 {
+		return 0, nil
+	}
 	b, ok := <-p.buf
 	if !ok {
 		err = io.EOF
