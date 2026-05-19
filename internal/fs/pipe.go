@@ -38,6 +38,8 @@ func newPipe(newFID func() FID) (r, w *fileDescriptor) {
 }
 
 type pipeChan struct {
+	unimplementedFile
+
 	buf            chan byte
 	done           chan struct{}
 	reader, writer FID
@@ -86,16 +88,28 @@ func (p *pipeChan) Sync() error {
 }
 
 func (p *pipeChan) Read(buf []byte) (n int, err error) {
-	for n < len(buf) {
-		// Read should always block if the pipe is not closed
-		b, ok := <-p.buf
-		if !ok {
-			err = io.EOF
-			return
-		}
-		buf[n] = b
-		n++
+	b, ok := <-p.buf
+	if !ok {
+		err = io.EOF
+		return
 	}
+	buf[n] = b
+	n++
+
+	for n < len(buf) {
+		select {
+		case b, ok := <-p.buf:
+			if !ok {
+				err = io.EOF
+				return
+			}
+			buf[n] = b
+			n++
+		default:
+			goto doneReading
+		}
+	}
+doneReading:
 	if n == 0 {
 		err = io.EOF
 	}

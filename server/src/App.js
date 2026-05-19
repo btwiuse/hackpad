@@ -6,7 +6,7 @@ import "@fontsource/roboto";
 import '@fortawesome/fontawesome-free/css/all.css';
 import Compat from './Compat';
 import Loading from './Loading';
-import { install, run, observeGoDownloadProgress } from './Hackpad';
+import { boot, observeGoDownloadProgress } from './Hackpad';
 import { newEditor } from './Editor';
 import { newTerminal } from './Terminal';
 
@@ -19,12 +19,10 @@ function App() {
     window.editor = {
       newTerminal,
       newEditor,
-    }
-    Promise.all([ install('editor'), install('sh') ])
-      .then(() => {
-        run('editor', '--editor=editor')
-        setLoading(false)
-      })
+    };
+    boot().then(() => {
+      setLoading(false);
+    });
   }, [setLoading, setPercentage])
 
   return (

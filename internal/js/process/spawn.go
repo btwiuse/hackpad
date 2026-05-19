@@ -40,11 +40,65 @@ type jsWrapper interface {
 }
 
 func Spawn(command string, args []string, attr *process.ProcAttr) (js.Value, error) {
-	p, err := process.New(command, args, attr)
+	p, err := spawnProcess(command, args, attr)
 	if err != nil {
 		return js.Value{}, err
 	}
-	return p.(jsWrapper).JSValue(), p.Start()
+	return wrapPIDer(p, nil)
+}
+
+type defaultSpawner struct{}
+
+func (defaultSpawner) Spawn(command string, argv []string, attr *process.ProcAttr) (PIDer, error) {
+	return spawnProcess(command, argv, attr)
+}
+
+func spawnProcess(command string, args []string, attr *process.ProcAttr) (PIDer, error) {
+	p, err := process.New(command, args, attr)
+	if err != nil {
+		return nil, err
+	}
+	return p, p.Start()
+}
+
+func wrapPIDer(p PIDer, err error) (js.Value, error) {
+	if err != nil {
+		return js.Value{}, err
+	}
+	if wrapper, ok := p.(jsWrapper); ok {
+		return wrapper.JSValue(), nil
+	}
+	return js.ValueOf(map[string]interface{}{
+		"pid": p.PID().JSValue(),
+	}), nil
+}
+
+func spawnWith(spawner Spawner, args []js.Value) (interface{}, error) {
+	if len(args) == 0 {
+		return nil, errors.Errorf("Invalid number of args, expected command name: %v", args)
+	}
+
+	command := args[0].String()
+	argv := []string{command}
+	if len(args) >= 2 {
+		if args[1].Type() != js.TypeObject || args[1].Get("length").IsUndefined() {
+			return nil, errors.New("Second arg must be an array of arguments")
+		}
+		length := args[1].Length()
+		for i := 0; i < length; i++ {
+			argv = append(argv, args[1].Index(i).String())
+		}
+	}
+
+	procAttr := &process.ProcAttr{}
+	if len(args) >= 3 {
+		argv[0], procAttr = parseProcAttr(command, args[2])
+	}
+	p, err := spawner.Spawn(command, argv, procAttr)
+	if err != nil {
+		return nil, err
+	}
+	return wrapPIDer(p, nil)
 }
 
 func parseProcAttr(defaultCommand string, value js.Value) (argv0 string, attr *process.ProcAttr) {

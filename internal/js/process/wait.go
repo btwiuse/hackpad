@@ -16,26 +16,35 @@ func wait(args []js.Value) ([]interface{}, error) {
 }
 
 func waitSync(args []js.Value) (interface{}, error) {
+	return waitSyncWith(defaultWaiter{}, args)
+}
+
+type defaultWaiter struct{}
+
+func (defaultWaiter) Wait(pid process.PID) (exitCode int, err error) {
+	p, ok := process.Get(pid)
+	if !ok {
+		return 0, errors.Errorf("Unknown child process: %d", pid)
+	}
+	return p.Wait()
+}
+
+func waitSyncWith(waiter Waiter, args []js.Value) (interface{}, error) {
 	if len(args) != 1 {
 		return nil, errors.Errorf("Invalid number of args, expected 1: %v", args)
 	}
 	pid := process.PID(args[0].Int())
 	waitStatus := new(syscall.WaitStatus)
-	wpid, err := Wait(pid, waitStatus, 0, nil)
+	wpid, err := Wait(waiter, pid, waitStatus, 0, nil)
 	return js.ValueOf(map[string]interface{}{
 		"pid":      wpid.JSValue(),
 		"exitCode": waitStatus.ExitStatus(),
 	}), err
 }
 
-func Wait(pid process.PID, wstatus *syscall.WaitStatus, options int, rusage *syscall.Rusage) (wpid process.PID, err error) {
+func Wait(waiter Waiter, pid process.PID, wstatus *syscall.WaitStatus, options int, rusage *syscall.Rusage) (wpid process.PID, err error) {
 	// TODO support options and rusage
-	p, ok := process.Get(pid)
-	if !ok {
-		return 0, errors.Errorf("Unknown child process: %d", pid)
-	}
-
-	exitCode, err := p.Wait()
+	exitCode, err := waiter.Wait(pid)
 	if wstatus != nil {
 		const (
 			// defined in syscall.WaitStatus

@@ -33,10 +33,13 @@ func Install(args []js.Value) error {
 	if len(args) != 1 {
 		return errors.New("Expected command name to install")
 	}
-	cmdpath := args[0].String()
+	return InstallPath(args[0].String())
+}
+
+func InstallPath(cmdpath string) error {
 	command := strings.TrimSuffix(filepath.Base(cmdpath), ".wasm")
 
-	if err := os.MkdirAll("/bin", 0644); err != nil {
+	if err := os.MkdirAll("/bin", 0o644); err != nil {
 		return err
 	}
 
@@ -46,7 +49,7 @@ func Install(args []js.Value) error {
 	}
 	defer runtime.GC()
 	fs := process.Current().Files()
-	fd, err := fs.Open("/bin/"+command, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0750)
+	fd, err := fs.Open("/bin/"+command, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o750)
 	if err != nil {
 		return err
 	}

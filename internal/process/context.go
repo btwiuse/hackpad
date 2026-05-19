@@ -33,10 +33,16 @@ func Init(switchedContext func(PID, PID)) {
 		panic(err)
 	}
 	p.state = stateRunning
-	pids[minPID] = p
+	InitCurrent(p, switchedContext)
+}
 
+func InitCurrent(current Process, switchedContext func(PID, PID)) {
+	pids[current.PID()] = current
+	if uint64(current.PID()) > lastPID.Load() {
+		lastPID.Store(uint64(current.PID()))
+	}
 	switchedContextListener = switchedContext
-	switchContext(minPID)
+	switchContext(current.PID())
 }
 
 func switchContext(pid PID) (prev PID) {
@@ -47,7 +53,7 @@ func switchContext(pid PID) (prev PID) {
 	}
 	newProcess := pids[pid]
 	currentPID = pid
-	switchedContextListener(pid, newProcess.parentPID)
+	switchedContextListener(pid, newProcess.ParentPID())
 	return
 }
 

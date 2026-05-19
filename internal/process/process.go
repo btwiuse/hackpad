@@ -33,7 +33,7 @@ const (
 )
 
 var (
-	pids    = make(map[PID]*process)
+	pids    = make(map[PID]Process)
 	lastPID atomic.Uint64
 )
 
@@ -42,6 +42,8 @@ func init() {
 }
 
 type Process interface {
+	fmt.Stringer
+
 	PID() PID
 	ParentPID() PID
 
@@ -50,6 +52,7 @@ type Process interface {
 	Files() *fs.FileDescriptors
 	WorkingDirectory() string
 	SetWorkingDirectory(wd string) error
+	Env() map[string]string
 }
 
 type process struct {
@@ -70,7 +73,27 @@ func New(command string, args []string, attr *ProcAttr) (Process, error) {
 	return newWithCurrent(Current(), PID(lastPID.Add(1)), command, args, attr)
 }
 
+func NewWithOpenFiles(newPID PID, command string, args []string, workingDirectory string, openFiles []common.OpenFileAttr, env map[string]string) (Process, error) {
+	files, setFilesWD, err := fs.NewFileDescriptorsFromOpenFiles(newPID, workingDirectory, openFiles)
+	ctx, cancel := context.WithCancel(context.Background())
+	return &process{
+		pid:             newPID,
+		command:         command,
+		args:            args,
+		state:           statePending,
+		attr:            &ProcAttr{Dir: workingDirectory, Env: env},
+		ctx:             ctx,
+		ctxDone:         cancel,
+		err:             err,
+		fileDescriptors: files,
+		setFilesWD:      setFilesWD,
+	}, err
+}
+
 func newWithCurrent(current Process, newPID PID, command string, args []string, attr *ProcAttr) (*process, error) {
+	if attr == nil {
+		attr = &ProcAttr{}
+	}
 	wd := current.WorkingDirectory()
 	if attr.Dir != "" {
 		wd = attr.Dir
@@ -127,7 +150,7 @@ func (p *process) start() error {
 
 func (p *process) prepExecutable() (command string, err error) {
 	fs := p.Files()
-	command, err = lookPath(fs.Stat, os.Getenv("PATH"), p.command)
+	command, err = lookPath(fs.Stat, p.Env()["PATH"], p.command)
 	if err != nil {
 		return "", err
 	}
@@ -179,6 +202,17 @@ func (p *process) SetWorkingDirectory(wd string) error {
 
 func (p *process) String() string {
 	return fmt.Sprintf("PID=%s, Command=%v, State=%s, WD=%s, Attr=%+v, Err=%+v, Files:\n%v", p.pid, p.args, p.state, p.WorkingDirectory(), p.attr, p.err, p.fileDescriptors)
+}
+
+func (p *process) Env() map[string]string {
+	if p.attr == nil || p.attr.Env == nil {
+		return splitEnvPairs(os.Environ())
+	}
+	envCopy := make(map[string]string, len(p.attr.Env))
+	for k, v := range p.attr.Env {
+		envCopy[k] = v
+	}
+	return envCopy
 }
 
 func Dump() interface{} {
