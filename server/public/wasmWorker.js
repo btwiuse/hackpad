@@ -2,7 +2,7 @@
 
 async function runWasm(params) {
   try {
-    self.importScripts("wasm/wasm_exec.js")
+    self.importScripts("/wasm/wasm_exec.js")
     const go = new Go()
     const result = await WebAssembly.instantiateStreaming(fetch(params.wasm), go.importObject)
     await go.run(result.instance)

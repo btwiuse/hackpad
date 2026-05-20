@@ -74,8 +74,10 @@ func (p *portPipe) Read(b []byte) (n int, err error) {
 		if !ok {
 			return 0, io.EOF
 		}
+		if message.Err != nil {
+			return 0, message.Err
+		}
 		p.remainingReadData = message.Data
-		err = message.Err
 	}
 	n = copy(b, p.remainingReadData)
 	p.remainingReadData = p.remainingReadData[n:]

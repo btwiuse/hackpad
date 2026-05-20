@@ -125,7 +125,7 @@ func NewOpenFileDescriptors(parentPID common.PID, workingDirectory string, openF
 			openFile{attr: common.OpenFileAttr{FilePath: "/dev/stderr"}, file: stderr},
 		)
 	case len(openFiles) < 3:
-		return nil, nil, errors.Errorf("Invalid number of inherited file descriptors: got %d, want 0 or at least 3", len(openFiles))
+		return nil, nil, errors.Errorf("Invalid number of inherited file descriptors: got %d, want 0 or at least 3 (stdin, stdout, stderr)", len(openFiles))
 	default:
 		for _, attr := range openFiles {
 			if attr.RawDevice != nil {
