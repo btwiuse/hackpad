@@ -5,7 +5,7 @@ async function runWasm(params) {
   const go = new Go()
   const result = await WebAssembly.instantiateStreaming(fetch(params.wasm), go.importObject)
   await go.run(result.instance)
-  close()
+  self.close()
 }
 
 const params = new URLSearchParams(self.location.search)

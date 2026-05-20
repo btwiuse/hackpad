@@ -131,7 +131,7 @@ func NewOpenFileDescriptors(parentPID common.PID, workingDirectory string, openF
 			if attr.RawDevice != nil {
 				files = append(files, openFile{
 					attr: attr,
-					file: newDeviceFile(path.Base(attr.FilePath), attr.RawDevice),
+					file: newDeviceFile(path.Base(attr.FilePath), attr.RawDevice, os.FileMode(attr.Mode)),
 				})
 				continue
 			}

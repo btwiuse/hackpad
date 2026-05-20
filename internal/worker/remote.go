@@ -34,8 +34,7 @@ func NewRemote(parent process.Process, pid process.PID, command string, argv []s
 	if attr == nil {
 		attr = new(process.ProcAttr)
 	}
-	ctx := context.Background()
-	closeCtx, cancel := context.WithCancel(ctx)
+	closeCtx, cancel := context.WithCancel(context.Background())
 
 	if attr.Dir == "" {
 		attr.Dir = parent.WorkingDirectory()
@@ -83,7 +82,7 @@ func NewRemote(parent process.Process, pid process.PID, command string, argv []s
 	}
 
 	go func() {
-		if err := awaitMessage(ctx, port, "pending_init"); err != nil {
+		if err := awaitMessage(closeCtx, port, "pending_init"); err != nil {
 			log.Error("Failed awaiting pending_init:", workerName, err)
 			return
 		}
@@ -92,7 +91,7 @@ func NewRemote(parent process.Process, pid process.PID, command string, argv []s
 			log.Error("Failed sending init to worker:", workerName, err)
 			return
 		}
-		if err := awaitMessage(ctx, remote.port, "ready"); err != nil {
+		if err := awaitMessage(closeCtx, remote.port, "ready"); err != nil {
 			log.Error("Failed awaiting ready:", workerName, err)
 			return
 		}
@@ -211,7 +210,7 @@ func bindPortToFile(ctx context.Context, port *jsworker.MessagePort, file hackpa
 		for {
 			n, err := file.Read(buf)
 			if err != nil {
-				if err.Error() != "operation not supported" {
+				if err != interop.ErrNotImplemented {
 					log.Error(err)
 				}
 				return

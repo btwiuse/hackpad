@@ -18,7 +18,7 @@ func optionalPipe(v js.Value) *jsworker.MessagePort {
 	}
 	port, err := jsworker.WrapMessagePort(v)
 	if err != nil {
-		panic(err)
+		return nil
 	}
 	return port
 }

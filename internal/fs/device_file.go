@@ -2,6 +2,8 @@ package fs
 
 import (
 	"io"
+	"os"
+	"time"
 
 	"github.com/hack-pad/hackpadfs"
 	"github.com/pkg/errors"
@@ -10,14 +12,16 @@ import (
 type deviceFile struct {
 	name      string
 	rawDevice io.ReadWriteCloser
+	mode      os.FileMode
 }
 
 var _ hackpadfs.File = &deviceFile{}
 
-func newDeviceFile(name string, rawDevice io.ReadWriteCloser) *deviceFile {
+func newDeviceFile(name string, rawDevice io.ReadWriteCloser, mode os.FileMode) *deviceFile {
 	return &deviceFile{
 		name:      name,
 		rawDevice: rawDevice,
+		mode:      mode,
 	}
 }
 
@@ -36,5 +40,17 @@ func (d *deviceFile) Close() error {
 }
 
 func (d *deviceFile) Stat() (hackpadfs.FileInfo, error) {
-	return newNamedFileInfo(d.name), nil
+	return deviceFileInfo{name: d.name, mode: d.mode}, nil
 }
+
+type deviceFileInfo struct {
+	name string
+	mode os.FileMode
+}
+
+func (i deviceFileInfo) Name() string             { return i.name }
+func (i deviceFileInfo) Size() int64              { return 0 }
+func (i deviceFileInfo) Mode() hackpadfs.FileMode { return hackpadfs.FileMode(i.mode) }
+func (i deviceFileInfo) ModTime() time.Time       { return time.Time{} }
+func (i deviceFileInfo) IsDir() bool              { return false }
+func (i deviceFileInfo) Sys() interface{}         { return nil }

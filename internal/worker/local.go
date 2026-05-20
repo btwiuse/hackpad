@@ -13,6 +13,7 @@ import (
 	"github.com/hack-pad/hackpad/internal/jsworker"
 	"github.com/hack-pad/hackpad/internal/log"
 	"github.com/hack-pad/hackpad/internal/process"
+	"github.com/hack-pad/hackpadfs"
 	"github.com/pkg/errors"
 )
 
@@ -39,13 +40,17 @@ func NewLocal(ctx context.Context, localJS *jsworker.Local) (_ *Local, err error
 	workingDirectory := init.Get("workingDirectory")
 	openFiles := init.Get("openFiles")
 	env := init.Get("env")
+	parsedOpenFiles, err := parseOpenFiles(openFiles)
+	if err != nil {
+		return nil, err
+	}
 	local.process, err = process.NewIsolated(
 		common.PID(init.Get("ppid").Int()),
 		common.PID(init.Get("pid").Int()),
 		command.String(),
 		interop.StringsFromJSValue(argv),
 		workingDirectory.String(),
-		parseOpenFiles(openFiles),
+		parsedOpenFiles,
 		stringMapFromJSObject(env),
 	)
 	if err != nil {
@@ -150,7 +155,7 @@ func makeExitMessage(exitCode int) js.Value {
 	})
 }
 
-func parseOpenFiles(v js.Value) []common.OpenFileAttr {
+func parseOpenFiles(v js.Value) ([]common.OpenFileAttr, error) {
 	openFileJSValues := interop.SliceFromJSValue(v)
 	var openFiles []common.OpenFileAttr
 	for _, o := range openFileJSValues {
@@ -160,16 +165,17 @@ func parseOpenFiles(v js.Value) []common.OpenFileAttr {
 			var err error
 			pipe, err = portToReadWriteCloser(openFile.pipe)
 			if err != nil {
-				panic(err)
+				return nil, err
 			}
 		}
 		openFiles = append(openFiles, common.OpenFileAttr{
 			FilePath:   openFile.filePath,
 			SeekOffset: openFile.seekOffset,
+			Mode:       hackpadMode(pipe != nil),
 			RawDevice:  pipe,
 		})
 	}
-	return openFiles
+	return openFiles, nil
 }
 
 func (l *Local) reservePID() common.PID {
@@ -193,4 +199,11 @@ func stringMapFromJSObject(value js.Value) map[string]string {
 		env[name] = prop.String()
 	}
 	return env
+}
+
+func hackpadMode(isPipe bool) hackpadfs.FileMode {
+	if isPipe {
+		return hackpadfs.ModeNamedPipe
+	}
+	return 0
 }

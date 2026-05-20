@@ -34,7 +34,7 @@ func (o openFile) JSValue() js.Value {
 	return js.ValueOf(map[string]interface{}{
 		ofFilePath:   o.filePath,
 		ofSeekOffset: o.seekOffset,
-		ofPipe:       o.pipe.JSValue(),
+		ofPipe:       jsPortValue(o.pipe),
 	})
 }
 
@@ -50,4 +50,11 @@ func optionalInt64(v js.Value) int64 {
 		return 0
 	}
 	return int64(v.Int())
+}
+
+func jsPortValue(port *jsworker.MessagePort) js.Value {
+	if port == nil {
+		return js.Null()
+	}
+	return port.JSValue()
 }
