@@ -17,6 +17,7 @@ import (
 	"github.com/hack-pad/hackpadfs"
 	"github.com/hack-pad/hackpadfs/indexeddb/idbblob"
 	"github.com/hack-pad/hackpadfs/keyvalue/blob"
+	"github.com/pkg/errors"
 )
 
 type Remote struct {
@@ -67,6 +68,12 @@ func NewRemote(parent process.Process, pid process.PID, command string, argv []s
 			return
 		}
 		if me.Data.Type() != js.TypeObject {
+			return
+		}
+		jsError := me.Data.Get("error")
+		if jsError.Type() == js.TypeString && jsError.String() != "" {
+			remote.closeErr = errors.New(jsError.String())
+			cancel()
 			return
 		}
 		jsExitCode := me.Data.Get("exitCode")

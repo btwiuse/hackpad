@@ -179,8 +179,7 @@ func parseOpenFiles(v js.Value) ([]common.OpenFileAttr, error) {
 }
 
 func (l *Local) reservePID() common.PID {
-	l.nextPID++
-	return common.PID(l.nextPID)
+	return nextChildPID(l.process.PID(), &l.nextPID)
 }
 
 func (l *Local) PID() common.PID {

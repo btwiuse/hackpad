@@ -1,11 +1,16 @@
 "use strict";
 
 async function runWasm(params) {
-  self.importScripts("wasm/wasm_exec.js")
-  const go = new Go()
-  const result = await WebAssembly.instantiateStreaming(fetch(params.wasm), go.importObject)
-  await go.run(result.instance)
-  self.close()
+  try {
+    self.importScripts("wasm/wasm_exec.js")
+    const go = new Go()
+    const result = await WebAssembly.instantiateStreaming(fetch(params.wasm), go.importObject)
+    await go.run(result.instance)
+  } catch (error) {
+    self.postMessage({ error: `${error}` })
+  } finally {
+    self.close()
+  }
 }
 
 const params = new URLSearchParams(self.location.search)

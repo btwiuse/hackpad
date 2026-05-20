@@ -67,6 +67,8 @@ func shouldRunInDOM(command string) bool {
 var nextChildPIDByParent = map[common.PID]uint64{}
 
 func reserveChildPID(parent common.PID) common.PID {
-	nextChildPIDByParent[parent]++
-	return common.PID(uint64(parent)<<16 | nextChildPIDByParent[parent])
+	next := nextChildPIDByParent[parent]
+	pid := nextChildPID(parent, &next)
+	nextChildPIDByParent[parent] = next
+	return pid
 }

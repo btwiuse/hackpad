@@ -37,7 +37,7 @@ type portPipeMessage struct {
 
 func portToReadWriteCloser(port *jsworker.MessagePort) (io.ReadWriteCloser, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	receivedData := make(chan portPipeMessage)
+	receivedData := make(chan portPipeMessage, 1)
 	err := port.Listen(ctx, func(me jsworker.MessageEvent, err error) {
 		var buf []byte
 		if err == nil {
@@ -52,6 +52,10 @@ func portToReadWriteCloser(port *jsworker.MessagePort) (io.ReadWriteCloser, erro
 	if err != nil {
 		return nil, err
 	}
+	go func() {
+		<-ctx.Done()
+		close(receivedData)
+	}()
 	return &portPipe{
 		port:         port,
 		receivedData: receivedData,
@@ -66,7 +70,10 @@ func (p *portPipe) Close() error {
 
 func (p *portPipe) Read(b []byte) (n int, err error) {
 	if len(p.remainingReadData) == 0 {
-		message := <-p.receivedData
+		message, ok := <-p.receivedData
+		if !ok {
+			return 0, io.EOF
+		}
 		p.remainingReadData = message.Data
 		err = message.Err
 	}

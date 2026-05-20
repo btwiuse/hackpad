@@ -12,6 +12,9 @@ import (
 )
 
 const (
+	// These match syscall.LOCK_SH, syscall.LOCK_EX, and syscall.LOCK_UN on
+	// platforms where flock is available. The js/wasm target does not expose
+	// those constants, so keep local equivalents for compatibility.
 	lockShared    = 1
 	lockExclusive = 2
 	lockUnlock    = 8
