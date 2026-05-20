@@ -61,6 +61,26 @@ func Get(pid PID) (process Process, ok bool) {
 	return p, ok
 }
 
+func SetCurrent(proc Process) {
+	if proc == nil {
+		return
+	}
+	p, ok := proc.(*process)
+	if ok {
+		pids[p.pid] = p
+	}
+	currentPID = proc.PID()
+	for {
+		last := lastPID.Load()
+		if uint64(proc.PID()) <= last || lastPID.CompareAndSwap(last, uint64(proc.PID())) {
+			break
+		}
+	}
+	if switchedContextListener != nil {
+		switchedContextListener(proc.PID(), proc.ParentPID())
+	}
+}
+
 func splitEnvPairs(pairs []string) map[string]string {
 	env := make(map[string]string)
 	for _, pair := range pairs {

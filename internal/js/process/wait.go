@@ -30,12 +30,7 @@ func waitSync(args []js.Value) (interface{}, error) {
 
 func Wait(pid process.PID, wstatus *syscall.WaitStatus, options int, rusage *syscall.Rusage) (wpid process.PID, err error) {
 	// TODO support options and rusage
-	p, ok := process.Get(pid)
-	if !ok {
-		return 0, errors.Errorf("Unknown child process: %d", pid)
-	}
-
-	exitCode, err := p.Wait()
+	exitCode, err := configuredWaiter.Wait(pid)
 	if wstatus != nil {
 		const (
 			// defined in syscall.WaitStatus

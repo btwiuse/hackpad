@@ -10,11 +10,11 @@ import (
 
 func (p *process) run(path string) {
 	cmd := exec.Command(path, p.args...)
-	if p.attr.Env == nil {
+	if p.env == nil {
 		cmd.Env = os.Environ()
-		p.attr.Env = splitEnvPairs(cmd.Env)
+		p.env = splitEnvPairs(cmd.Env)
 	} else {
-		for k, v := range p.attr.Env {
+		for k, v := range p.env {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 		}
 	}

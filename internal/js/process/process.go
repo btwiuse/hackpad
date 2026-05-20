@@ -13,7 +13,10 @@ var jsProcess = js.Global().Get("process")
 
 func Init() {
 	process.Init(switchedContext)
+	bind()
+}
 
+func bind() {
 	currentProcess := process.Current()
 	err := currentProcess.Files().MkdirAll(currentProcess.WorkingDirectory(), 0750)
 	if err != nil {

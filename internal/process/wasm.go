@@ -40,10 +40,10 @@ func (p *process) startWasmPromise(path string, exitChan chan<- int) (promise.Pr
 	p.state = stateCompiling
 	goInstance := jsGo.New()
 	goInstance.Set("argv", interop.SliceFromStrings(p.args))
-	if p.attr.Env == nil {
-		p.attr.Env = splitEnvPairs(os.Environ())
+	if p.env == nil {
+		p.env = splitEnvPairs(os.Environ())
 	}
-	goInstance.Set("env", interop.StringMap(p.attr.Env))
+	goInstance.Set("env", interop.StringMap(p.env))
 	var resumeFuncPtr *js.Func
 	goInstance.Set("exit", interop.SingleUseFunc(func(this js.Value, args []js.Value) interface{} {
 		defer func() {

@@ -14,10 +14,13 @@ import (
 	"github.com/hack-pad/hackpad/internal/log"
 	libProcess "github.com/hack-pad/hackpad/internal/process"
 	"github.com/hack-pad/hackpad/internal/terminal"
+	"github.com/hack-pad/hackpad/internal/worker"
 )
 
 func main() {
 	process.Init()
+	dom := worker.NewDOM()
+	process.SetSpawner(dom, dom)
 	fs.Init()
 	global.Set("spawnTerminal", js.FuncOf(terminal.SpawnTerminal))
 	global.Set("dump", js.FuncOf(func(this js.Value, args []js.Value) interface{} {

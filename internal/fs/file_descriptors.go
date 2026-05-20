@@ -84,6 +84,88 @@ func NewFileDescriptors(parentPID common.PID, workingDirectory string, parentFil
 	return f, f.setWorkingDirectory, nil
 }
 
+func NewOpenFileDescriptors(parentPID common.PID, workingDirectory string, openFiles []common.OpenFileAttr) (_ *FileDescriptors, _ func(wd string) error, returnedErr error) {
+	f := &FileDescriptors{
+		parentPID:        parentPID,
+		previousFID:      0,
+		files:            make(map[FID]*fileDescriptor),
+		workingDirectory: newWorkingDirectory(workingDirectory),
+	}
+	type openFile struct {
+		attr common.OpenFileAttr
+		file hackpadfs.File
+	}
+	var files []openFile
+	defer func() {
+		if returnedErr == nil {
+			return
+		}
+		for _, opened := range files {
+			_ = opened.file.Close()
+		}
+	}()
+
+	switch {
+	case len(openFiles) == 0:
+		stdin, err := getFile("dev/stdin", 0, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		stdout, err := getFile("dev/stdout", 0, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		stderr, err := getFile("dev/stderr", 0, 0)
+		if err != nil {
+			return nil, nil, err
+		}
+		files = append(files,
+			openFile{attr: common.OpenFileAttr{FilePath: "/dev/stdin"}, file: stdin},
+			openFile{attr: common.OpenFileAttr{FilePath: "/dev/stdout"}, file: stdout},
+			openFile{attr: common.OpenFileAttr{FilePath: "/dev/stderr"}, file: stderr},
+		)
+	case len(openFiles) < 3:
+		return nil, nil, errors.Errorf("Invalid number of inherited file descriptors, must be 0 or at least 3: %#v", openFiles)
+	default:
+		for _, attr := range openFiles {
+			if attr.RawDevice != nil {
+				files = append(files, openFile{
+					attr: attr,
+					file: newDeviceFile(path.Base(attr.FilePath), attr.RawDevice),
+				})
+				continue
+			}
+			filePath := attr.FilePath
+			if !path.IsAbs(filePath) {
+				filePath = common.ResolvePath(workingDirectory, filePath)
+			}
+			file, err := getFile(filePath, attr.Flags, os.FileMode(attr.Mode))
+			if err != nil {
+				return nil, nil, err
+			}
+			if attr.SeekOffset != 0 {
+				if _, err := hackpadfs.SeekFile(file, attr.SeekOffset, io.SeekStart); err != nil {
+					_ = file.Close()
+					return nil, nil, err
+				}
+			}
+			files = append(files, openFile{attr: attr, file: file})
+		}
+	}
+
+	for _, opened := range files {
+		fid := f.newFID()
+		name := path.Base(opened.attr.FilePath)
+		if name == "." || name == "/" || name == "" {
+			name = opened.attr.FilePath
+		}
+		fd := newIrregularFileDescriptor(fid, name, opened.file, opened.attr.Mode)
+		f.addFileDescriptor(fd)
+		fd.Open(parentPID)
+	}
+	return f, f.setWorkingDirectory, nil
+}
+
 func (f *FileDescriptors) setWorkingDirectory(path string) error {
 	path = f.resolvePath(path)
 	return f.workingDirectory.Set(path)
@@ -321,6 +403,15 @@ func (f *FileDescriptors) RawFID(fid FID) (io.Reader, error) {
 		return nil, interop.BadFileNumber(fid)
 	}
 	return f.files[fid].file, nil
+}
+
+func (f *FileDescriptors) OpenRawFID(pid common.PID, fid FID) (hackpadfs.File, error) {
+	fd, ok := f.files[fid]
+	if !ok {
+		return nil, interop.BadFileNumber(fid)
+	}
+	fd.Open(pid)
+	return fd.file, nil
 }
 
 func (f *FileDescriptors) RawFIDs() []io.Reader {

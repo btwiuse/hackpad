@@ -50,6 +50,7 @@ type Process interface {
 	Files() *fs.FileDescriptors
 	WorkingDirectory() string
 	SetWorkingDirectory(wd string) error
+	Env() map[string]string
 }
 
 type process struct {
@@ -58,6 +59,7 @@ type process struct {
 	args            []string
 	state           processState
 	attr            *ProcAttr
+	env             map[string]string
 	ctx             context.Context
 	ctxDone         context.CancelFunc
 	exitCode        int
@@ -67,22 +69,54 @@ type process struct {
 }
 
 func New(command string, args []string, attr *ProcAttr) (Process, error) {
-	return newWithCurrent(Current(), PID(lastPID.Add(1)), command, args, attr)
+	return newWithCurrent(Current(), ReservePID(), command, args, attr)
+}
+
+func ReservePID() PID {
+	return PID(lastPID.Add(1))
 }
 
 func newWithCurrent(current Process, newPID PID, command string, args []string, attr *ProcAttr) (*process, error) {
+	if attr == nil {
+		attr = new(ProcAttr)
+	}
 	wd := current.WorkingDirectory()
 	if attr.Dir != "" {
 		wd = attr.Dir
+	}
+	env := current.Env()
+	if len(attr.Env) != 0 {
+		env = copyEnv(attr.Env)
 	}
 	files, setFilesWD, err := fs.NewFileDescriptors(newPID, wd, current.Files(), attr.Files)
 	ctx, cancel := context.WithCancel(context.Background())
 	return &process{
 		pid:             newPID,
+		parentPID:       current.PID(),
 		command:         command,
 		args:            args,
 		state:           statePending,
 		attr:            attr,
+		env:             env,
+		ctx:             ctx,
+		ctxDone:         cancel,
+		err:             err,
+		fileDescriptors: files,
+		setFilesWD:      setFilesWD,
+	}, err
+}
+
+func NewIsolated(parentPID, newPID PID, command string, args []string, workingDirectory string, openFiles []common.OpenFileAttr, env map[string]string) (Process, error) {
+	files, setFilesWD, err := fs.NewOpenFileDescriptors(newPID, workingDirectory, openFiles)
+	ctx, cancel := context.WithCancel(context.Background())
+	return &process{
+		pid:             newPID,
+		parentPID:       parentPID,
+		command:         command,
+		args:            args,
+		state:           statePending,
+		attr:            &ProcAttr{Dir: workingDirectory},
+		env:             copyEnv(env),
 		ctx:             ctx,
 		ctxDone:         cancel,
 		err:             err,
@@ -127,7 +161,11 @@ func (p *process) start() error {
 
 func (p *process) prepExecutable() (command string, err error) {
 	fs := p.Files()
-	command, err = lookPath(fs.Stat, os.Getenv("PATH"), p.command)
+	pathEnv := os.Getenv("PATH")
+	if p.env != nil && p.env["PATH"] != "" {
+		pathEnv = p.env["PATH"]
+	}
+	command, err = lookPath(fs.Stat, pathEnv, p.command)
 	if err != nil {
 		return "", err
 	}
@@ -177,6 +215,10 @@ func (p *process) SetWorkingDirectory(wd string) error {
 	return p.setFilesWD(wd)
 }
 
+func (p *process) Env() map[string]string {
+	return copyEnv(p.env)
+}
+
 func (p *process) String() string {
 	return fmt.Sprintf("PID=%s, Command=%v, State=%s, WD=%s, Attr=%+v, Err=%+v, Files:\n%v", p.pid, p.args, p.state, p.WorkingDirectory(), p.attr, p.err, p.fileDescriptors)
 }
@@ -194,4 +236,15 @@ func Dump() interface{} {
 		s.WriteString(pids[pid].String() + "\n")
 	}
 	return s.String()
+}
+
+func copyEnv(env map[string]string) map[string]string {
+	if len(env) == 0 {
+		return nil
+	}
+	envCopy := make(map[string]string, len(env))
+	for k, v := range env {
+		envCopy[k] = v
+	}
+	return envCopy
 }
